@@ -1,0 +1,17 @@
+# CFI Agent 核心依赖（正式 Python 3.10+）
+# 安装：pip install -r requirements.txt
+# 或一键安装（推荐，会注册 cfi-agent 命令）：pip install -e .
+httpx>=0.27
+typer>=0.12
+rich>=13.7
+prompt_toolkit>=3.0
+python-dotenv>=1.0
+pyyaml>=6.0
+pyelftools>=0.31
+openpyxl>=3.1
+flask>=3.0
+cxxfilt>=0.2
+
+# 可选：MCP sqlite 集成（正式 Python 且能装 pydantic-core 时启用）
+# pip install -r requirements-mcp.txt
+# mcp>=1.0

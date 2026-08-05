@@ -1,0 +1,33 @@
+# === 敏感文件（绝对不能上传）===
+.env
+*.key
+
+# === 检测输出（大文件，不传）===
+output/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.xlsx
+
+# === 大体积依赖（用户自行下载）===
+echarts.min.js
+
+# === Python 缓存 ===
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# === 临时文件 ===
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+
+# === 虚拟环境 ===
+venv/
+.venv/
+env/

@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cfi-agent"
+version = "0.1.0"
+description = "OpenHarmony CFI 安全检测 Agent — LLM 驱动、MCP 集成、CLI 交互"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.27",
+    "typer>=0.12",
+    "rich>=13.7",
+    "prompt_toolkit>=3.0",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    "pyelftools>=0.31",
+    "openpyxl>=3.1",
+    "flask>=3.0",
+    "cxxfilt>=0.2",
+]
+
+[project.optional-dependencies]
+# MCP 集成（可选）：正式 Python 3.10+ 环境用 pip install -e .[mcp] 启用
+# alpha 3.12 上 pydantic-core 的 rust DLL 无法加载，会自动跳过 MCP，改用本地 query_sql 工具
+mcp = ["mcp>=1.0"]
+
+[project.scripts]
+cfi-agent = "cfi_agent.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+cfi_agent = ["**/*.md", "**/*.html"]

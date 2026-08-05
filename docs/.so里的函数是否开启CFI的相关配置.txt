@@ -1,0 +1,359 @@
+===============================================================================
+    .so 里的函数是否开启 CFI 的相关配置说明
+===============================================================================
+
+生成时间: 2026-07-15
+适用版本: OpenHarmony v4.1 Release, rk3568
+
+===============================================================================
+一、概述
+===============================================================================
+
+当一个 .so 在 BUILD.gn 中声明了 sanitize.cfi = true 后，编译器会对该
+.so 启用 CFI (Control Flow Integrity) 编译选项 (-fsanitize=cfi)。但这
+并不意味着 .so 中的每一个函数都受 CFI 保护。
+
+实际上，.so 内部的函数级 CFI 控制通过 3 种机制实现：
+
+  机制 1: cfi_blocklist.txt 黑名单文件 (最主要方式)
+  机制 2: __attribute__((no_sanitize("cfi"))) 源码注解
+  机制 3: 汇编函数隐式豁免 (CFI 无法检测汇编)
+
+本文档详细说明每种机制的配置方式、作用范围和实际使用情况。
+
+===============================================================================
+二、机制 1: cfi_blocklist.txt 黑名单文件
+===============================================================================
+
+2.1 配置方式
+------------------------------------------------------------------------
+在组件的 BUILD.gn 文件中，sanitize 配置块内声明 blocklist：
+
+  sanitize = {
+      cfi = true
+      cfi_cross_dso = true
+      debug = false
+      blocklist = "../../cfi_blocklist.txt"    ← 指定黑名单文件路径
+  }
+
+编译器收到此配置后，会对 cfi_blocklist.txt 中列出的函数、类型或源码
+路径跳过 CFI 检查，其余函数正常插桩。
+
+2.2 blocklist 文件语法
+------------------------------------------------------------------------
+blocklist 文件支持 3 种匹配语法：
+
+  语法                    含义                              作用范围
+  ----------------------------------------------------------------------
+  fun:函数名模式          匹配函数名 (支持通配符 *)           跳过该函数的间接调用检查
+  type:类型名模式         匹配 C++ 类型名 (支持通配符 *)     跳过该类型虚表的 CFI 检查
+  src:源码路径模式        匹配源码文件路径 (支持通配符 *)   跳过该文件中所有函数的 CFI 检查
+
+2.3 全局 blocklist
+------------------------------------------------------------------------
+文件路径: build/config/sanitizers/cfi_blocklist.txt
+
+内容 (共 29 行):
+  # Standard library types.
+  type:std::*                              ← 豁免所有标准库类型的虚表检查
+
+  # The stdext namespace contains Microsoft standard library extensions.
+  type:stdext::*                           ← 豁免 Microsoft 扩展库类型
+
+  # Types with an uuid attribute, i.e. COM types.
+  type:attr:uuid                           ← 豁免 COM 类型
+
+  # STL allocators (T *allocator<T *>::allocate(size_type, const void*)).
+  # The type signature mandates a cast from uninitialized void* to T*.
+  fun:*8allocateEjPKv                      ← 豁免 STL 内存分配器 (void* 到 T* 转换)
+  fun:*8allocateEmPKv                      ← 同上 (不同 size_type)
+
+  # std::get_temporary_buffer, likewise (libstdc++, libc++).
+  fun:_ZSt20get_temporary_buffer*          ← 豁免临时缓冲区分配
+  fun:_ZNSt3__120get_temporary_buffer*     ← 同上 (libc++ 版本)
+
+  # STL address-of magic (libstdc++, libc++).
+  fun:*__addressof*                        ← 豁免 STL address-of 函数
+  fun:_ZNSt3__19addressof*                ← 同上 (libc++ 版本)
+
+  # Windows C++ stdlib headers that contain bad unrelated casts.
+  src:*xmemory0                            ← 豁免 Windows 内存管理头文件
+  src:*xstddef                             ← 豁免 Windows stddef 头文件
+
+  # b/119127110
+  fun:*internal_default_instance*          ← 豁免内部默认实例
+
+作用: 此全局 blocklist 适用于所有开启了 CFI 的 .so，主要豁免标准库中
+      存在合法类型转换的函数 (如 void* 到 T* 的分配器)，避免 CFI 误报。
+
+2.4 组件级 blocklist
+------------------------------------------------------------------------
+除全局 blocklist 外，有 14 个组件拥有自己的 blocklist 文件:
+
+  组件                                     blocklist 文件路径
+  ----------------------------------------------------------------------
+  face_auth                               base/useriam/face_auth/cfi_blocklist.txt
+  user_auth_framework                    base/useriam/user_auth_framework/cfi_blocklist.txt
+  pin_auth                               base/useriam/pin_auth/cfi_blocklist.txt
+  fingerprint_auth                        base/useriam/fingerprint_auth/cfi_blocklist.txt
+  account/os_account                      base/account/os_account/cfi_blocklist.txt
+  device_auth                             base/security/device_auth/cfi_blocklist.txt
+  crypto_framework                        base/security/crypto_framework/cfi_blocklist.txt
+  device_security_level                   base/security/device_security_level/cfi_blocklist.txt
+  common_event_service (3个)              base/notification/common_event_service/*/cfi_blocklist.txt
+  enterprise_device_management            base/customization/enterprise_device_management/test/.../cfi_blocklist.txt
+  update_service                          base/update/updateservice/.../cfi_blocklist.txt
+  power_manager (测试)                    base/powermgr/power_manager/test/cfi_blocklist.txt
+  eventhandler                            base/notification/eventhandler/.../handler_blocklist.txt
+  time_service                            base/time/time_service/.../time_blocklist.txt
+
+2.5 组件 blocklist 内容示例
+------------------------------------------------------------------------
+
+示例 1: base/useriam/face_auth/cfi_blocklist.txt
+  src:*/foundation/communication/ipc/interfaces/innerkits/ipc_core/include/iremote_broker.h
+  src:*/commonlibrary/c_utils/base/include/refbase.h
+  src:*/third_party/googletest/googletest/include/gtest/internal/gtest-port.h
+  src:*/third_party/googletest/googlemock/include/gmock/gmock-cardinalities.h
+
+  分析: 豁免 IPC 远程代理 (iremote_broker.h)、引用计数基类 (refbase.h)、
+        测试框架 (gtest/gmock)。这些头文件中存在合法的类型转换，
+        CFI 会将其误判为违规，因此需要豁免。
+
+示例 2: base/security/crypto_framework/cfi_blocklist.txt
+  src:*/frameworks/crypto_operation/*
+  src:*/frameworks/key/*
+  src:*/frameworks/js/napi/crypto/src/*
+
+  分析: 豁免加密操作、密钥处理、NAPI 加密接口的全部源码。
+        加密代码中存在大量回调函数和类型转换，CFI 检查会误报。
+
+示例 3: base/notification/common_event_service/services/cfi_blocklist.txt
+  src:*commonlibrary/c_utils/base/*
+  src:*refbase.h
+
+  分析: 豁免 c_utils 工具库和 refbase，因为引用计数机制中存在
+        void* 到具体类型的转换。
+
+2.6 blocklist 在反汇编中的体现
+------------------------------------------------------------------------
+对比有 blocklist 和无 blocklist 编译的同一 .so，可以清楚看到:
+
+有 blocklist (豁免了 SetBufferProducer 函数):
+  408a: ldr   r1, [r0]             ← 直接取虚表指针
+  408c: ldr   r1, [r1, #-12]       ← 取虚表项
+  4090: add   r0, r1               ← 计算地址
+  4092: add   r1, sp, #4           ← 准备参数
+  4094: blx   #7736                ← 直接调用 (无 CFI 检查)
+
+无 blocklist (该函数受 CFI 保护):
+  408c: ldr   r1, [r0]             ← 取虚表指针
+  408e: ldr   r1, [r1, #-12]      ← 取虚表项
+  4092: adds  r5, r0, r1          ← 计算地址
+  4094: ldr   r2, [r0, r1]        ← 读取数据
+  4096: sub.w r0, r2, r9          ← CFI 位图检查开始
+  409a: subs  r0, #136            ← 计算位图偏移
+  409c: ror.w r0, r0, #2          ← 旋转
+  40a0: cmp   r0, #33             ← 范围比较
+  40a2: bhi   skip                ← 超范围则跳过
+  40a4: and   r0, r0, #63         ← 位测试
+  ...                               ← (更多位测试指令)
+  40ce: beq   error                ← 不匹配则报错
+  40d0: add   r1, sp, #4          ← 准备参数
+  40d2: mov   r0, r5
+  40d4: blx   #8344               ← 通过 CFI 检查后调用
+
+  差异: 无 blocklist 版本在 blx 调用前多了一段 CFI 位图检查指令，
+        用于验证虚表指针是否落在合法区间内。blocklist 中的函数会跳过
+        这段检查。
+
+===============================================================================
+三、机制 2: __attribute__((no_sanitize("cfi"))) 源码注解
+===============================================================================
+
+3.1 配置方式
+------------------------------------------------------------------------
+在 C/C++ 源码中，对单个函数添加编译器属性注解:
+
+  __attribute__((no_sanitize("cfi")))
+  void SomeFunction(void *ptr)
+  {
+      // 此函数内部的间接调用不受 CFI 检查
+      ((SomeType *)ptr)->method();  // void* 转换，CFI 会误报，所以跳过
+  }
+
+编译器看到此注解后，不对该函数生成 CFI 检查代码。
+
+3.2 实际使用情况
+------------------------------------------------------------------------
+在整个 OpenHarmony 源码中搜索，共找到 13 处 no_sanitize("cfi") 注解:
+
+  组件                          函数                              原因
+  ----------------------------------------------------------------------
+  certificate_framework (1个)
+    cf_object_base.c            CfObjDestroy()                    void* 到 CfObjectBase* 的转换
+
+  wpa_supplicant (12个)
+    wpa_debug.c                 wpa_debug_setup_stdout()          可变参数调试输出
+    wpa_debug.c                 wpa_msg()                         可变参数回调
+    wpa_debug.c                 wpa_msg_only_for_cb()             回调函数
+    wpa_debug.c                 wpa_msg_ctrl()                    控制接口
+    wpa_debug.c                 wpa_msg_global()                  全局消息
+    wpa_debug.c                 wpa_msg_global_ctrl()             全局控制
+    wpa_debug.c                 wpa_msg_no_global()               非全局消息
+    (wpa_supplicant-2.9 中也有同样 5 个函数)
+
+3.3 示例代码
+------------------------------------------------------------------------
+文件: base/security/certificate_framework/frameworks/common/v1.0/src/cf_object_base.c
+
+  __attribute__((no_sanitize("cfi")))
+  void CfObjDestroy(void *obj)
+  {
+      if (obj != NULL) {
+          ((CfObjectBase *)obj)->destroy((CfObjectBase *)obj);
+          // 此处将 void* obj 转换为 CfObjectBase*，
+          // 然后通过虚函数指针调用 destroy()。
+          // CFI 会将此 void* 到具体类型的转换判定为违规，
+          // 因此需要 no_sanitize("cfi") 豁免。
+      }
+  }
+
+===============================================================================
+四、机制 3: 汇编函数隐式豁免
+===============================================================================
+
+4.1 原理
+------------------------------------------------------------------------
+CFI 是编译器 (Clang/LLVM) 在编译 C/C++ 代码时自动插入的检查代码。
+汇编文件 (.S) 不经过编译器的代码生成阶段，汇编器 (assembler) 直接
+将汇编指令翻译为机器码，编译器无法在其中插入 CFI 检查。
+
+因此，.so 中以汇编实现的函数自动豁免 CFI，不受任何配置控制。
+
+4.2 影响范围
+------------------------------------------------------------------------
+在用户态 .so 中，汇编函数较少，主要出现在:
+  - 原子操作 (atomic operations)
+  - 内存屏障 (memory barrier)
+  - 特殊指令封装 (如 NEON 指令)
+
+在内核中，汇编函数较多 (40 个 .o 文件)，包括:
+  - 内存操作 (memcpy, memset, strcmp 等)
+  - 内核入口/退出 (entry, head, sleep)
+  - 加密加速 (AES, SHA)
+  - 上下文切换
+
+===============================================================================
+五、函数级 CFI 状态总结
+===============================================================================
+
+对于一个开启了 CFI 的 .so，其内部函数的 CFI 状态如下:
+
+  函数类别                  CFI 状态    控制机制
+  ----------------------------------------------------------------------
+  普通 C/C++ 函数           ✅ 有 CFI   默认插桩
+  blocklist 中列出的函数     ❌ 无 CFI   cfi_blocklist.txt 豁免
+  blocklist 中列出的类型     ❌ 无 CFI   虚表检查跳过
+  blocklist 中列出的源码路径 ❌ 无 CFI   该路径下所有函数豁免
+  no_sanitize 注解的函数     ❌ 无 CFI   __attribute__ 豁免
+  汇编函数                   ❌ 无 CFI   隐式豁免 (无法插桩)
+
+5.1 如何检测 .so 内哪些函数有 CFI、哪些没有
+------------------------------------------------------------------------
+方法: 对 .so 反汇编 (llvm-objdump -d)，检查符号表:
+
+  有 CFI 保护的函数:
+    - 函数名带 .cfi 后缀 (如 ConvertToJSErrCode.cfi)
+      这些是编译器生成的 CFI 插桩跳板，外部调用走此版本
+    - __cfi_check 函数存在 (CFI 验证入口)
+    - .L.cfi.jumptable 跳转表条目 (合法间接调用目标表)
+    - 0xd4d4d4d4 trap 填充区 (非法目标陷阱)
+
+  无 CFI 保护的函数:
+    - 在 blocklist 中列出的 (通过对比有无 blocklist 的反汇编确认)
+    - 带 no_sanitize("cfi") 注解的 (在源码中搜索)
+    - 汇编实现的 (在 .text 段中但无 .cfi 后缀版本)
+
+5.2 检测示例 (libaccount_common.z.so)
+------------------------------------------------------------------------
+  有 CFI 保护的函数 (17 个 .cfi 后缀函数):
+    _ZN4OHOS18ConvertToJSErrCodeEi.cfi           ← ConvertToJSErrCode 的插桩版本
+    _ZN4OHOS27OsAccountConvertToJSErrCodeEi.cfi   ← OsAccountConvertToJSErrCode 的插桩版本
+    _ZN4OHOS28AppAccountConvertToJSErrCodeEi.cfi  ← AppAccountConvertToJSErrCode 的插桩版本
+    _ZN4OHOS31AppAccountConvertOtherJSErrCodeEi.cfi
+    _ZN4OHOS9AccountSA17AccountLogWrapper10JudgeLevelE...Ei.cfi
+    ... (共 17 个)
+
+  CFI 基础设施:
+    __cfi_check (0x7001)        ← CFI 验证入口
+    __cfi_check_fail (0x6131)   ← CFI 失败处理
+    .L.cfi.jumptable (0xf1a9)  ← CFI 跳转表 (12 个条目)
+    0xd4d4d4d4 填充 (0x6144)   ← CFI 影子区 (trap 陷阱)
+
+  blocklist 豁免的函数:
+    通过 base/account/os_account/cfi_blocklist.txt 中的条目确认
+    豁免 IPC 代理、refbase、gtest 等相关函数
+
+===============================================================================
+六、配置文件清单
+===============================================================================
+
+6.1 全局 blocklist
+------------------------------------------------------------------------
+  路径: build/config/sanitizers/cfi_blocklist.txt
+  作用: 适用于所有开启了 CFI 的 .so
+  内容: 豁免标准库类型、STL 分配器、Windows stdlib 等 (29 行)
+
+6.2 组件 blocklist (14 个)
+------------------------------------------------------------------------
+  路径                                    豁免内容
+  ----------------------------------------------------------------------
+  base/useriam/face_auth/cfi_blocklist.txt          IPC代理、refbase、gtest
+  base/useriam/user_auth_framework/cfi_blocklist.txt   同上
+  base/useriam/pin_auth/cfi_blocklist.txt           同上
+  base/useriam/fingerprint_auth/cfi_blocklist.txt   同上
+  base/account/os_account/cfi_blocklist.txt        IPC代理、refbase、gtest
+  base/security/device_auth/cfi_blocklist.txt      (待确认)
+  base/security/crypto_framework/cfi_blocklist.txt  加密操作、密钥、NAPI接口
+  base/security/device_security_level/cfi_blocklist.txt  (待确认)
+  base/notification/common_event_service/.../cfi_blocklist.txt  c_utils、refbase
+  base/notification/eventhandler/.../handler_blocklist.txt  (待确认)
+  base/update/updateservice/.../cfi_blocklist.txt  (待确认)
+  base/time/time_service/.../time_blocklist.txt    (待确认)
+  base/customization/enterprise_device_management/.../cfi_blocklist.txt  (待确认)
+  base/powermgr/power_manager/test/cfi_blocklist.txt  (待确认)
+
+6.3 no_sanitize 注解 (13 处)
+------------------------------------------------------------------------
+  路径                                                         函数
+  ----------------------------------------------------------------------
+  base/security/certificate_framework/.../cf_object_base.c    CfObjDestroy (1个)
+  third_party/wpa_supplicant/wpa_supplicant-2.9_standard/.../wpa_debug.c  7个调试函数
+  third_party/wpa_supplicant/wpa_supplicant-2.9/.../wpa_debug.c            5个调试函数
+
+===============================================================================
+七、总结
+===============================================================================
+
+  .so 内部函数级 CFI 控制的 3 种机制:
+
+  | 机制                      | 配置位置              | 控制粒度    | 使用数量
+  |---------------------------|----------------------|-------------|----------
+  | cfi_blocklist.txt 黑名单   | BUILD.gn + txt 文件   | 函数/类型/文件 | 15个文件
+  | no_sanitize("cfi") 注解    | C/C++ 源代码          | 单个函数    | 13处
+  | 汇编隐式豁免               | 无需配置              | 整个汇编文件  | 视.so而定
+
+  blocklist 是最主要的控制方式，通过在 BUILD.gn 中指定黑名单文件路径，
+  编译器对文件中列出的函数/类型/源码路径跳过 CFI 检查。
+  全局 blocklist 豁免标准库，组件 blocklist 豁免 IPC 代理、refbase 等
+  存在合法类型转换的代码。
+
+  no_sanitize 注解用于单个函数的精确豁免，主要用于存在 void* 转换
+  或可变参数回调的场景。
+
+  汇编函数由于不经过编译器，自动豁免，无需配置。
+
+===============================================================================
+报告结束
+===============================================================================
