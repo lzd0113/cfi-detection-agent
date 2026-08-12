@@ -129,10 +129,17 @@ cfi_agent/
 
 OpenAI 兼容接口（`/v1/chat/completions`），含流式输出和工具调用：
 
-- OpenAI: `openai/gpt-4o`, `openai/gpt-4o-mini`
-- DeepSeek: `deepseek/deepseek-chat`, `deepseek/deepseek-reasoner`
-- 通义千问: `qwen/qwen-plus`, `qwen/qwen-turbo`
-- 其他兼容 OpenAI 格式的服务
+| 标签 | 模型 ID | 环境变量 |
+|------|---------|---------|
+| DeepSeek | `deepseek/deepseek-chat` | `DEEPSEEK_API_KEY` |
+| 通义千问 | `qwen/qwen-plus` | `DASHSCOPE_API_KEY` |
+| OpenAI | `openai/gpt-4o-mini` | `OPENAI_API_KEY` |
+| Moonshot Kimi | `moonshot/moonshot-v1-8k` | `MOONSHOT_API_KEY` |
+| 智谱 GLM | `zhipu/glm-4` | `ZHIPU_API_KEY` |
+| 硅基流动 | `siliconflow/Qwen/Qwen2.5-7B-Instruct` | `SILICONFLOW_API_KEY` |
+| 本地 Ollama | `ollama` | 无需 key |
+
+通过 `/setup` 命令配置模型和 API Key，或用 `/model <名称>` 在运行时切换。
 
 ## 技术细节
 
