@@ -114,13 +114,13 @@ def build_module_data(results, cxxfilt_module=None):
 
     all_cfi_names = set()
     for r in results:
-        if r.get('cfi_enabled'):
-            if r.get('cfi_protected'):
-                all_cfi_names.update(r['cfi_protected'])
-            if r.get('truly_unprotected'):
-                all_cfi_names.update(r['truly_unprotected'])
-            if r.get('cfi_infra'):
-                all_cfi_names.update(r['cfi_infra'])
+        # Collect CFI function names for ALL .so (including NO CFI — they have unprotected functions)
+        if r.get('cfi_protected'):
+            all_cfi_names.update(r['cfi_protected'])
+        if r.get('truly_unprotected'):
+            all_cfi_names.update(r['truly_unprotected'])
+        if r.get('cfi_infra'):
+            all_cfi_names.update(r['cfi_infra'])
         # Also collect PAC/BTI function names (for AArch64 .so, regardless of CFI status)
         if r.get('pac_bti_available'):
             for key in ['pac_protected_list', 'pac_sign_only_list', 'pac_no_pac_list',
@@ -150,13 +150,13 @@ def build_module_data(results, cxxfilt_module=None):
         return name_to_idx[dem]
 
     for r in results:
-        if r.get('cfi_enabled'):
-            if r.get('cfi_protected'):
-                r['cfi_protected'] = [get_name_idx(n) for n in r['cfi_protected']]
-            if r.get('truly_unprotected'):
-                r['truly_unprotected'] = [get_name_idx(n) for n in r['truly_unprotected']]
-            if r.get('cfi_infra'):
-                r['cfi_infra'] = [get_name_idx(n) for n in r['cfi_infra']]
+        # Convert function name lists to indices for ALL .so (including NO CFI)
+        if r.get('cfi_protected'):
+            r['cfi_protected'] = [get_name_idx(n) for n in r['cfi_protected']]
+        if r.get('truly_unprotected'):
+            r['truly_unprotected'] = [get_name_idx(n) for n in r['truly_unprotected']]
+        if r.get('cfi_infra'):
+            r['cfi_infra'] = [get_name_idx(n) for n in r['cfi_infra']]
         # Convert PAC/BTI function name lists to indices
         if r.get('pac_bti_available'):
             for key in ['pac_protected_list', 'pac_sign_only_list', 'pac_no_pac_list',

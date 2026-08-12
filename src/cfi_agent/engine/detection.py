@@ -2,8 +2,10 @@ import os
 import sys
 import struct
 import subprocess
+import bisect
 from pathlib import Path
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
 def ensure_pyelftools():
@@ -45,6 +47,18 @@ def _read_u32_le(data, offset):
     if offset + 4 > len(data):
         return None
     return data[offset] | (data[offset + 1] << 8) | (data[offset + 2] << 16) | (data[offset + 3] << 24)
+
+
+def _has_cfi_near(slowpath_calls, site_addr, window=48):
+    """Check if any address in sorted slowpath_calls is within `window` bytes of site_addr. O(log n) via bisect."""
+    if not slowpath_calls:
+        return False
+    pos = bisect.bisect_left(slowpath_calls, site_addr)
+    if pos < len(slowpath_calls) and slowpath_calls[pos] - site_addr < window:
+        return True
+    if pos > 0 and site_addr - slowpath_calls[pos - 1] < window:
+        return True
+    return False
 
 
 def decode_aarch64_bl(data, offset, base_addr):
@@ -124,45 +138,7 @@ def _is_ldr_with_base(instr):
     return None
 
 
-def _identify_vtable_ranges(elf):
-    """Scan .rodata/.data.rel.ro for arrays of function pointers (vtable regions)."""
-    text_sec = elf.get_section_by_name('.text')
-    if not text_sec:
-        return []
-    text_start = text_sec['sh_addr']
-    text_end = text_start + text_sec['sh_size']
-
-    func_addrs = set()
-    symtab = elf.get_section_by_name('.symtab')
-    if symtab:
-        for sym in symtab.iter_symbols():
-            if sym['st_info']['type'] == 'STT_FUNC' and sym['st_value'] != 0:
-                func_addrs.add(sym['st_value'])
-
-    ranges = []
-    for sec_name in ['.rodata', '.data.rel.ro', '.data']:
-        sec = elf.get_section_by_name(sec_name)
-        if not sec or sec['sh_size'] == 0:
-            continue
-        data = sec.data()
-        base = sec['sh_addr']
-        vt_start = None
-        for i in range(0, len(data) - 7, 8):
-            val = struct.unpack_from('<Q', data, i)[0]
-            is_func = (text_start <= val < text_end) or (val in func_addrs)
-            if is_func:
-                if vt_start is None:
-                    vt_start = base + i
-            else:
-                if vt_start is not None and (base + i - vt_start) >= 16:
-                    ranges.append((vt_start, base + i))
-                vt_start = None
-        if vt_start is not None and (base + len(data) - vt_start) >= 16:
-            ranges.append((vt_start, base + len(data)))
-    return ranges
-
-
-def _classify_blr_vcall(data, blr_offset, rn, vtable_ranges, max_lookback=32):
+def _classify_blr_vcall(data, blr_offset, rn, max_lookback=32):
     """Trace BLR's register backwards within basic block to determine vcall vs icall.
 
     Returns: True=vcall, False=icall, None=unknown.
@@ -246,10 +222,11 @@ def classify_functions(elf):
     }
 
 
-def scan_call_sites(elf):
+def scan_call_sites(elf, dimension=None):
+    """Scan for indirect call sites. dimension='vcall' or 'icall' to only compute one."""
     machine = elf.get_machine_arch()
     if machine == 'AArch64':
-        return scan_call_sites_aarch64(elf)
+        return scan_call_sites_aarch64(elf, dimension)
     slowpath_plt = find_slowpath_plt(elf)
     text_sec = elf.get_section_by_name('.text')
     vcall_cfi_count = vcall_site_count = vcall_no_cfi_count = 0
@@ -279,18 +256,14 @@ def scan_call_sites(elf):
                         is_vcall = True
                         break
             site_addr = text_base + i
-            has_cfi = False
-            for call_addr in slowpath_calls:
-                if abs(call_addr - site_addr) < 48:
-                    has_cfi = True
-                    break
-            if is_vcall:
+            has_cfi = _has_cfi_near(slowpath_calls, site_addr)
+            if is_vcall and dimension != 'icall':
                 vcall_site_count += 1
                 if has_cfi:
                     vcall_cfi_count += 1
                 else:
                     vcall_no_cfi_count += 1
-            else:
+            elif not is_vcall and dimension != 'vcall':
                 icall_site_count += 1
                 if has_cfi:
                     icall_cfi_count += 1
@@ -309,7 +282,8 @@ def scan_call_sites(elf):
     }
 
 
-def scan_call_sites_aarch64(elf):
+def scan_call_sites_aarch64(elf, dimension=None):
+    """Scan AArch64 .text for BLR indirect calls. dimension='vcall' or 'icall' to only compute one."""
     slowpath_plt = find_slowpath_plt(elf)
     text_sec = elf.get_section_by_name('.text')
     vcall_cfi_count = vcall_site_count = vcall_no_cfi_count = 0
@@ -319,10 +293,6 @@ def scan_call_sites_aarch64(elf):
         text_data = text_sec.data()
         text_base = text_sec['sh_addr']
 
-        # Identify vtable regions for precise classification
-        vtable_ranges = _identify_vtable_ranges(elf)
-
-        # Find all BL to __cfi_slowpath (CFI check points)
         slowpath_calls = []
         if slowpath_plt:
             for i in range(0, len(text_data) - 3, 4):
@@ -330,7 +300,6 @@ def scan_call_sites_aarch64(elf):
                 if target is not None and target == slowpath_plt:
                     slowpath_calls.append(text_base + i)
 
-        # Find all BLR (indirect calls) and classify vcall vs icall
         for i in range(0, len(text_data) - 3, 4):
             instr = _read_u32_le(text_data, i)
             if instr is None:
@@ -338,14 +307,12 @@ def scan_call_sites_aarch64(elf):
             rn = is_aarch64_blr(instr)
             if rn is None:
                 continue
-            # Precise classification: trace BLR register backwards through basic block
-            result = _classify_blr_vcall(text_data, i, rn, vtable_ranges)
+            result = _classify_blr_vcall(text_data, i, rn)
             if result is True:
                 is_vcall = True
             elif result is False:
                 is_vcall = False
             else:
-                # Fallback: old heuristic (LDR within 20 bytes before BLR)
                 is_vcall = False
                 for j in range(max(0, i - 20), i, 4):
                     prev_instr = _read_u32_le(text_data, j)
@@ -357,20 +324,15 @@ def scan_call_sites_aarch64(elf):
                         if rt == rn:
                             is_vcall = True
                             break
-            # Check CFI protection: slowpath call within ±48 bytes
             site_addr = text_base + i
-            has_cfi = False
-            for call_addr in slowpath_calls:
-                if abs(call_addr - site_addr) < 48:
-                    has_cfi = True
-                    break
-            if is_vcall:
+            has_cfi = _has_cfi_near(slowpath_calls, site_addr)
+            if is_vcall and dimension != 'icall':
                 vcall_site_count += 1
                 if has_cfi:
                     vcall_cfi_count += 1
                 else:
                     vcall_no_cfi_count += 1
-            else:
+            elif not is_vcall and dimension != 'vcall':
                 icall_site_count += 1
                 if has_cfi:
                     icall_cfi_count += 1
@@ -482,13 +444,6 @@ def _scan_pac_bti_bytes(elf):
         'retaa_count': retaa,
         'retab_count': retab,
     }
-
-
-def _find_sec_by_addr(elf, addr):
-    for sec in elf.iter_sections():
-        if sec['sh_size'] > 0 and sec['sh_addr'] <= addr < sec['sh_addr'] + sec['sh_size']:
-            return sec
-    return None
 
 
 def _scan_pac_bti_functions(elf):
@@ -623,46 +578,33 @@ def _scan_pac_bti_functions(elf):
     }
 
 
-def analyze_pac_bti(elf):
-    """Combined PAC/BTI analysis for AArch64 .so (called by analyze_so)."""
+def analyze_pac_bti(elf, dimension=None):
+    """PAC/BTI analysis for AArch64 .so. dimension='pac' or 'bti' to only compute one."""
     pac_prop, bti_prop = _check_pac_bti_property(elf)
     byte_data = _scan_pac_bti_bytes(elf)
     func_data = _scan_pac_bti_functions(elf)
-    return {
+    result = {
         'pac_bti_available': True,
         'pac_property': pac_prop,
         'bti_property': bti_prop,
         **byte_data,
         **func_data,
-        # Override pac_sign_count/pac_auth_count with function-level counts
-        # (not instruction-level) so that PAC函数保护 ≤ PAC签名 holds
         'pac_sign_count': func_data['pac_func_protected'] + func_data['pac_func_sign_only'],
-        'pac_auth_count': func_data['pac_func_protected'] + func_data.get('pac_func_auth_only', 0),
+        'pac_auth_count': func_data['pac_func_protected'],
     }
-
-
-def analyze_so(so_path, ELFFile, function_detail=True):
-    try:
-        with open(so_path, 'rb') as f:
-            elf = ELFFile(f)
-            machine = elf.get_machine_arch()
-            is_aarch64 = (machine == 'AArch64')
-
-            cfi_enabled = check_cfi_enabled(elf)
-
-            # PAC/BTI only for AArch64, regardless of CFI status
-            pac_bti = {}
-            if function_detail and is_aarch64:
-                pac_bti = analyze_pac_bti(elf)
-
-            if not function_detail:
-                return {'cfi_enabled': cfi_enabled, **pac_bti}
-            # Always classify functions — for non-CFI .so, all functions are "unprotected"
-            fn = classify_functions(elf)
-            calls = scan_call_sites(elf) if cfi_enabled else {}
-            return {'cfi_enabled': cfi_enabled, **fn, **calls, **pac_bti}
-    except Exception as e:
-        return {'cfi_enabled': False, 'error': str(e)}
+    # Zero out non-requested dimension
+    if dimension == 'pac':
+        for k in ['bti_count', 'bti_func_with', 'bti_func_without', 'bti_func_total',
+                  'bti_with_list', 'bti_without_list', 'retaa_count', 'retab_count']:
+            result[k] = 0 if not isinstance(result.get(k), list) else []
+        result['bti_property'] = None
+    elif dimension == 'bti':
+        for k in ['pac_sign_count', 'pac_auth_count', 'pac_func_protected', 'pac_func_sign_only',
+                  'pac_func_no_pac', 'pac_func_total', 'pac_property',
+                  'pac_protected_list', 'pac_sign_only_list', 'pac_no_pac_list']:
+            result[k] = 0 if not isinstance(result.get(k), list) else []
+        result['pac_property'] = None
+    return result
 
 
 def _log(log, msg):
@@ -688,184 +630,266 @@ def extract_module(rel_path):
     return parts[0] if parts else ''
 
 
+_DIM_ZERO_KEYS = {
+    'icall': ['vcall_site_count', 'vcall_cfi_count', 'vcall_no_cfi_count', 'vcall_cfi_rate'],
+    'vcall': ['icall_site_count', 'icall_cfi_count', 'icall_no_cfi_count', 'icall_cfi_rate'],
+    'pac': ['vcall_site_count', 'vcall_cfi_count', 'vcall_no_cfi_count', 'vcall_cfi_rate',
+            'icall_site_count', 'icall_cfi_count', 'icall_no_cfi_count', 'icall_cfi_rate',
+            'bti_count', 'bti_func_with', 'bti_func_without', 'bti_func_total'],
+    'bti': ['vcall_site_count', 'vcall_cfi_count', 'vcall_no_cfi_count', 'vcall_cfi_rate',
+            'icall_site_count', 'icall_cfi_count', 'icall_no_cfi_count', 'icall_cfi_rate',
+            'pac_sign_count', 'pac_auth_count', 'pac_func_protected', 'pac_func_sign_only', 'pac_no_pac'],
+    'functions': ['vcall_site_count', 'vcall_cfi_count', 'vcall_no_cfi_count', 'vcall_cfi_rate',
+                  'icall_site_count', 'icall_cfi_count', 'icall_no_cfi_count', 'icall_cfi_rate',
+                  'pac_sign_count', 'pac_auth_count', 'pac_func_protected', 'pac_func_sign_only', 'pac_func_no_pac',
+                  'bti_count', 'bti_func_with', 'bti_func_without', 'bti_func_total'],
+}
+
+_DIM_LABELS = {'functions': '仅函数级 CFI', 'vcall': 'vcall', 'icall': 'icall', 'pac': 'PAC', 'bti': 'BTI'}
+
+
+def run_dimension(lib_dir, ELFFile, dimension, progress=None, log=None):
+    """Run .so level + function classification + specified dimension only.
+    dimension: 'functions', 'vcall', 'icall', 'pac', 'bti'
+    """
+    return run_detection(lib_dir, ELFFile, function_detail=True, dimension=dimension,
+                         progress=progress, log=log)
+
+
+def _analyze_so_level(args):
+    """Worker for parallel .so-level detection."""
+    so_file_str, rel_path = args
+    ELFFile = ensure_pyelftools()
+    error = None
+    try:
+        with open(so_file_str, 'rb') as f:
+            elf = ELFFile(f)
+            enabled = check_cfi_enabled(elf)
+    except Exception as e:
+        enabled = False
+        error = str(e)
+    r = {'path': rel_path, 'cfi_enabled': enabled}
+    if error:
+        r['error'] = error
+    return r
+
+
 def run_so_level(lib_dir, ELFFile, progress=None, log=None):
     so_files = _iter_so(lib_dir)
     total = len(so_files)
     _log(log, f"找到 {total} 个 .so 文件（仅 .so 级检测）")
-    results = []
-    for i, so_file in enumerate(so_files, 1):
-        rel = _rel(so_file, lib_dir)
-        try:
-            with open(so_file, 'rb') as f:
-                elf = ELFFile(f)
-                enabled = check_cfi_enabled(elf)
-        except Exception as e:
-            enabled = False
-        results.append({'path': rel, 'cfi_enabled': enabled})
-        if i % 100 == 0:
-            _log(log, f"  进度: {i} / {total}")
-        if progress:
-            progress(i, total, rel)
-    on = sum(1 for r in results if r['cfi_enabled'])
+
+    tasks = [(str(so_file), _rel(so_file, lib_dir)) for so_file in so_files]
+    num_workers = min(os.cpu_count() or 4, 8)
+
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        future_to_idx = {executor.submit(_analyze_so_level, t): i for i, t in enumerate(tasks)}
+        temp_results = [None] * total
+        completed = 0
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            try:
+                temp_results[idx] = future.result()
+            except Exception as e:
+                temp_results[idx] = {'path': tasks[idx][1], 'cfi_enabled': False, 'error': str(e)}
+            completed += 1
+            if progress:
+                progress(completed, total, temp_results[idx].get('path', ''))
+            elif completed % 100 == 0:
+                _log(log, f"  进度: {completed} / {total}")
+
+    results = temp_results
+    on = sum(1 for r in results if r and r.get('cfi_enabled'))
+    err_count = sum(1 for r in results if r and r.get('error'))
     summary = {'total_so': total, 'cfi_enabled_so': on, 'cfi_not_enabled_so': total - on}
     _log(log, f"  CFI 已开启: {on} / 未开启: {total - on}")
+    if err_count:
+        _log(log, f"  解析失败: {err_count}")
     return results, summary
 
 
-def run_functions(lib_dir, ELFFile, progress=None, log=None):
-    so_files = _iter_so(lib_dir)
+def _analyze_one_so(args):
+    """Worker function for parallel .so analysis. Must be module-level for ProcessPoolExecutor."""
+    so_file_str, rel_path, function_detail, dimension, is_full, zero_keys = args
+    ELFFile = ensure_pyelftools()
+    try:
+        with open(so_file_str, 'rb') as f:
+            elf = ELFFile(f)
+            cfi_enabled = check_cfi_enabled(elf)
+
+            if not function_detail:
+                result = {'cfi_enabled': cfi_enabled}
+            else:
+                fn = classify_functions(elf)
+                calls = {}
+                pac_bti = {}
+
+                if is_full:
+                    calls = scan_call_sites(elf) if cfi_enabled else {}
+                    machine = elf.get_machine_arch()
+                    if machine == 'AArch64':
+                        pac_bti = analyze_pac_bti(elf)
+                else:
+                    if dimension in ('vcall', 'icall') and cfi_enabled:
+                        calls = scan_call_sites(elf, dimension)
+                    if dimension in ('pac', 'bti'):
+                        machine = elf.get_machine_arch()
+                        if machine == 'AArch64':
+                            pac_bti = analyze_pac_bti(elf, dimension)
+
+                result = {'cfi_enabled': cfi_enabled, **fn, **calls, **pac_bti}
+
+                for k in zero_keys:
+                    result[k] = 0
+    except Exception as e:
+        if not function_detail:
+            result = {'cfi_enabled': False, 'error': str(e)}
+        else:
+            result = {'cfi_enabled': False, 'error': str(e),
+                      'cfi_protected': [], 'cfi_protected_count': 0,
+                      'cfi_infra': [], 'cfi_infra_count': 0,
+                      'truly_unprotected': [], 'truly_unprotected_count': 0, 'other_count': 0}
+
+    result['path'] = rel_path
+    return result
+
+
+def _run_serial(so_files, lib_dir, ELFFile, function_detail, dimension, is_full, zero_keys, progress, log):
+    """Serial .so processing — no pickling overhead, best for full detection with large function lists."""
+    results = []
     total = len(so_files)
-    _log(log, f"找到 {total} 个 .so 文件（函数级检测）")
-    stats = {'cfi_protected_count': 0, 'cfi_infra_count': 0,
-             'truly_unprotected_count': 0, 'other_count': 0, 'so_analyzed': 0, 'so_no_symtab': 0,
-             'total_so': total, 'cfi_enabled_so': 0, 'cfi_not_enabled_so': 0}
-    per_so = []
     for i, so_file in enumerate(so_files, 1):
-        rel = _rel(so_file, lib_dir)
-        module = extract_module(rel)
+        rel_path = _rel(so_file, lib_dir)
         try:
-            with open(so_file, 'rb') as f:
+            with open(str(so_file), 'rb') as f:
                 elf = ELFFile(f)
-                if not check_cfi_enabled(elf):
-                    stats['cfi_not_enabled_so'] += 1
-                    r = classify_functions(elf) if elf.get_section_by_name('.symtab') else {'cfi_protected_count': 0, 'cfi_infra_count': 0, 'truly_unprotected_count': 0, 'other_count': 0}
-                    stats['truly_unprotected_count'] += r['truly_unprotected_count']
-                    stats['other_count'] += r['other_count']
-                    per_so.append({'path': rel, 'module': module, 'protected': 0, 'unprotected': r['truly_unprotected_count'], 'infra': 0, 'cfi_enabled': 0})
-                    continue
-                stats['cfi_enabled_so'] += 1
-                if not elf.get_section_by_name('.symtab'):
-                    stats['so_no_symtab'] += 1
-                    per_so.append({'path': rel, 'module': module, 'protected': 0, 'unprotected': 0, 'infra': 0, 'cfi_enabled': 1})
-                    continue
-                r = classify_functions(elf)
-                for k in ['cfi_protected_count', 'cfi_infra_count', 'truly_unprotected_count', 'other_count']:
-                    stats[k] += r[k]
-                stats['so_analyzed'] += 1
-                per_so.append({'path': rel, 'module': module, 'protected': r['cfi_protected_count'], 'unprotected': r['truly_unprotected_count'], 'infra': r['cfi_infra_count'], 'cfi_enabled': 1})
-        except Exception:
-            pass
-        if i % 100 == 0:
-            _log(log, f"  进度: {i} / {total}")
+                cfi_enabled = check_cfi_enabled(elf)
+                if not function_detail:
+                    result = {'cfi_enabled': cfi_enabled}
+                else:
+                    fn = classify_functions(elf)
+                    calls = {}
+                    pac_bti = {}
+                    if is_full:
+                        calls = scan_call_sites(elf) if cfi_enabled else {}
+                        machine = elf.get_machine_arch()
+                        if machine == 'AArch64':
+                            pac_bti = analyze_pac_bti(elf)
+                    else:
+                        if dimension in ('vcall', 'icall') and cfi_enabled:
+                            calls = scan_call_sites(elf, dimension)
+                        if dimension in ('pac', 'bti'):
+                            machine = elf.get_machine_arch()
+                            if machine == 'AArch64':
+                                pac_bti = analyze_pac_bti(elf, dimension)
+                    result = {'cfi_enabled': cfi_enabled, **fn, **calls, **pac_bti}
+                    for k in zero_keys:
+                        result[k] = 0
+        except Exception as e:
+            if not function_detail:
+                result = {'cfi_enabled': False, 'error': str(e)}
+            else:
+                result = {'cfi_enabled': False, 'error': str(e),
+                          'cfi_protected': [], 'cfi_protected_count': 0,
+                          'cfi_infra': [], 'cfi_infra_count': 0,
+                          'truly_unprotected': [], 'truly_unprotected_count': 0, 'other_count': 0}
+        result['path'] = rel_path
+        results.append(result)
         if progress:
-            progress(i, total, '')
-    ft = stats['cfi_protected_count'] + stats['truly_unprotected_count']
-    stats['function_total'] = ft
-    stats['function_protect_rate'] = round(stats['cfi_protected_count'] / ft * 100, 1) if ft > 0 else 0
-    _log(log, f"  分析 .so: {stats['so_analyzed']}  保护函数: {stats['cfi_protected_count']}  未保护: {stats['truly_unprotected_count']}")
-    return stats, per_so
+            progress(i, total, rel_path)
+        elif i % 100 == 0:
+            _log(log, f"  进度: {i} / {total}")
+    if not progress:
+        _log(log, f"  进度: {total} / {total} - 完成!")
+    return results
 
 
-def run_vcall(lib_dir, ELFFile, progress=None, log=None):
-    return _run_calls(lib_dir, ELFFile, 'vcall', progress, log)
+def _run_parallel(so_files, lib_dir, function_detail, dimension, is_full, zero_keys, progress, log):
+    """Parallel .so processing via ProcessPoolExecutor — pickling overhead for large function lists."""
+    total = len(so_files)
+    tasks = [(str(so_file), _rel(so_file, lib_dir), function_detail, dimension, is_full, zero_keys)
+             for so_file in so_files]
+    num_workers = min(os.cpu_count() or 4, 8)
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        future_to_idx = {executor.submit(_analyze_one_so, t): i for i, t in enumerate(tasks)}
+        temp_results = [None] * total
+        completed = 0
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            try:
+                temp_results[idx] = future.result()
+            except Exception as e:
+                rel_path = tasks[idx][1]
+                if function_detail:
+                    temp_results[idx] = {'cfi_enabled': False, 'error': str(e),
+                                        'cfi_protected': [], 'cfi_protected_count': 0,
+                                        'cfi_infra': [], 'cfi_infra_count': 0,
+                                        'truly_unprotected': [], 'truly_unprotected_count': 0, 'other_count': 0}
+                else:
+                    temp_results[idx] = {'cfi_enabled': False, 'error': str(e)}
+                temp_results[idx]['path'] = rel_path
+            completed += 1
+            if progress:
+                progress(completed, total, temp_results[idx].get('path', ''))
+            elif completed % 100 == 0:
+                _log(log, f"  进度: {completed} / {total}")
+    for i in range(total):
+        if temp_results[i] is None:
+            temp_results[i] = {'cfi_enabled': False, 'error': 'worker did not return result',
+                                'path': tasks[i][1]}
+    return temp_results
 
 
-def run_icall(lib_dir, ELFFile, progress=None, log=None):
-    return _run_calls(lib_dir, ELFFile, 'icall', progress, log)
+def run_detection(lib_dir, ELFFile, function_detail=True, dimension=None, progress=None, log=None, parallel=True):
+    """Run CFI detection on all .so files.
 
+    dimension=None: full detection (all dimensions).
+    dimension='functions'/'vcall'/'icall'/'pac'/'bti': single dimension only.
+    function_detail=False: only .so level (skip all function/call/PAC/BTI analysis).
+    """
+    is_full = dimension is None
 
-def _run_calls(lib_dir, ELFFile, kind, progress, log):
+    if is_full:
+        _log(log, f"正在查找 .so 文件...")
+    else:
+        _log(log, f"找到 .so 文件...")
+
     so_files = _iter_so(lib_dir)
     total = len(so_files)
-    _log(log, f"找到 {total} 个 .so 文件（{kind} 检测）")
-    site = cfi = no = 0
-    analyzed = 0
-    prot = unprot = infra = 0
-    per_so = []
-    cfi_on = cfi_off = 0
-    for i, so_file in enumerate(so_files, 1):
-        rel = _rel(so_file, lib_dir)
-        module = extract_module(rel)
-        try:
-            with open(so_file, 'rb') as f:
-                elf = ELFFile(f)
-                if not check_cfi_enabled(elf):
-                    cfi_off += 1
-                    fn = classify_functions(elf) if elf.get_section_by_name('.symtab') else {'cfi_protected_count': 0, 'truly_unprotected_count': 0, 'cfi_infra_count': 0}
-                    unprot += fn['truly_unprotected_count']
-                    per_so.append({'path': rel, 'module': module, 'site': 0, 'cfi': 0, 'no_cfi': 0, 'cfi_enabled': 0, 'protected': 0, 'unprotected': fn['truly_unprotected_count'], 'infra': 0})
-                    continue
-                cfi_on += 1
-                r = scan_call_sites(elf)
-                site += r[f'{kind}_site_count']
-                cfi += r[f'{kind}_cfi_count']
-                no += r[f'{kind}_no_cfi_count']
-                fn = classify_functions(elf) if elf.get_section_by_name('.symtab') else {'cfi_protected_count': 0, 'truly_unprotected_count': 0, 'cfi_infra_count': 0}
-                prot += fn['cfi_protected_count']
-                unprot += fn['truly_unprotected_count']
-                infra += fn['cfi_infra_count']
-                analyzed += 1
-                per_so.append({'path': rel, 'module': module, 'site': r[f'{kind}_site_count'], 'cfi': r[f'{kind}_cfi_count'], 'no_cfi': r[f'{kind}_no_cfi_count'], 'cfi_enabled': 1, 'protected': fn['cfi_protected_count'], 'unprotected': fn['truly_unprotected_count'], 'infra': fn['cfi_infra_count']})
-        except Exception:
-            pass
-        if i % 100 == 0:
-            _log(log, f"  进度: {i} / {total}")
-        if progress:
-            progress(i, total, '')
-    rate = round(cfi / site * 100, 1) if site > 0 else 0
-    _log(log, f"  分析 .so: {analyzed}  {kind} 调用点: {site} (有CFI:{cfi} 无CFI:{no}) 保护率:{rate}%")
-    stats = {
-        f'{kind}_site_count': site,
-        f'{kind}_cfi_count': cfi,
-        f'{kind}_no_cfi_count': no,
-        f'{kind}_cfi_rate': rate,
-        'so_analyzed': analyzed,
-        'total_so': total,
-        'cfi_enabled_so': cfi_on,
-        'cfi_not_enabled_so': cfi_off,
-        'total_cfi_protected_funcs': prot,
-        'total_truly_unprotected': unprot,
-        'total_cfi_infra': infra,
-    }
-    return stats, per_so
 
-
-def run_detection(lib_dir, ELFFile, function_detail=True, progress=None, log=None):
-    _log(log, f"正在查找 .so 文件...")
-    so_files = _iter_so(lib_dir)
-    total = len(so_files)
-    _log(log, f"找到 {total} 个 .so 文件")
-    if not function_detail:
-        _log(log, "模式: 仅 .so 级检测 (跳过函数级分析)")
+    if is_full:
+        _log(log, f"找到 {total} 个 .so 文件")
+        if not function_detail:
+            _log(log, "模式: 仅 .so 级检测 (跳过函数级分析)")
+    else:
+        dim_label = _DIM_LABELS.get(dimension, dimension)
+        others = [v for v in ['vcall', 'icall', 'pac', 'bti'] if v != dimension]
+        _log(log, f"找到 {total} 个 .so 文件（{dim_label} 检测，不含 {'/'.join(others)}）")
     _log(log, "")
 
     results = []
-    cfi_on_count = 0
-    cfi_off_count = 0
-    total_cfi_funcs = 0
-    total_truly_unprotected = 0
-    total_other_funcs = 0
-    total_infra = 0
-    total_vcall_sites = 0
-    total_vcall_cfi = 0
-    total_vcall_no_cfi = 0
-    total_icall_sites = 0
-    total_icall_cfi = 0
-    total_icall_no_cfi = 0
-    total_pac_sign = 0
-    total_pac_auth = 0
-    total_bti = 0
-    total_retaa = 0
-    total_retab = 0
-    total_pac_func_protected = 0
-    total_pac_func_sign_only = 0
-    total_pac_func_no_pac = 0
-    total_bti_func_with = 0
-    total_bti_func_without = 0
+    cfi_on_count = cfi_off_count = 0
+    total_cfi_funcs = total_truly_unprotected = total_other_funcs = total_infra = 0
+    total_vcall_sites = total_vcall_cfi = total_vcall_no_cfi = 0
+    total_icall_sites = total_icall_cfi = total_icall_no_cfi = 0
     aarch64_count = 0
+    total_pac_sign = total_pac_auth = total_bti = total_retaa = total_retab = 0
+    total_pac_func_protected = total_pac_func_sign_only = total_pac_func_no_pac = 0
+    total_bti_func_with = total_bti_func_without = 0
 
-    for i, so_file in enumerate(so_files, 1):
-        rel_path = _rel(so_file, lib_dir)
-        result = analyze_so(str(so_file), ELFFile, function_detail)
-        result['path'] = rel_path
-        results.append(result)
+    zero_keys = _DIM_ZERO_KEYS.get(dimension, []) if not is_full else []
 
-        if result.get('cfi_enabled'):
+    if parallel and function_detail:
+        results = _run_parallel(so_files, lib_dir, function_detail, dimension, is_full, zero_keys, progress, log)
+    else:
+        results = _run_serial(so_files, lib_dir, ELFFile, function_detail, dimension, is_full, zero_keys, progress, log)
+
+    for result in results:
+        cfi_enabled = result.get('cfi_enabled')
+        if cfi_enabled:
             cfi_on_count += 1
             if function_detail:
                 total_cfi_funcs += result.get('cfi_protected_count', 0)
-                total_truly_unprotected += result.get('truly_unprotected_count', 0)
-                total_other_funcs += result.get('other_count', 0)
                 total_infra += result.get('cfi_infra_count', 0)
                 total_vcall_sites += result.get('vcall_site_count', 0)
                 total_vcall_cfi += result.get('vcall_cfi_count', 0)
@@ -875,8 +899,9 @@ def run_detection(lib_dir, ELFFile, function_detail=True, progress=None, log=Non
                 total_icall_no_cfi += result.get('icall_no_cfi_count', 0)
         else:
             cfi_off_count += 1
-            if function_detail:
-                total_truly_unprotected += result.get('truly_unprotected_count', 0)
+        if function_detail:
+            total_truly_unprotected += result.get('truly_unprotected_count', 0)
+            if is_full:
                 total_other_funcs += result.get('other_count', 0)
 
         if result.get('pac_bti_available'):
@@ -893,30 +918,41 @@ def run_detection(lib_dir, ELFFile, function_detail=True, progress=None, log=Non
                 total_bti_func_with += result.get('bti_func_with', 0)
                 total_bti_func_without += result.get('bti_func_without', 0)
 
-        if i % 100 == 0:
-            _log(log, f"  进度: {i} / {total}")
-        if progress:
-            progress(i, total, rel_path)
-
-    _log(log, f"  进度: {total} / {total} - 完成!")
+    if not progress:
+        _log(log, f"  进度: {total} / {total} - 完成!")
+    err_count = sum(1 for r in results if r.get('error'))
     _log(log, "")
     _log(log, f"  CFI 已开启 .so:       {cfi_on_count}")
     _log(log, f"  CFI 未开启 .so:       {cfi_off_count}")
+    if err_count:
+        _log(log, f"  解析失败 .so:         {err_count}")
     if function_detail:
         _log(log, f"  CFI 保护函数:         {total_cfi_funcs}")
         _log(log, f"  CFI 基础设施符号:     {total_infra}")
-        _log(log, f"  真正未保护函数:       {total_truly_unprotected}")
-        _log(log, f"  其他函数总数:         {total_other_funcs}")
-        _log(log, f"  vcall 调用点:         {total_vcall_sites} (有CFI:{total_vcall_cfi} 无CFI:{total_vcall_no_cfi})")
-        _log(log, f"  icall 调用点:         {total_icall_sites} (有CFI:{total_icall_cfi} 无CFI:{total_icall_no_cfi})")
-    if function_detail and aarch64_count > 0:
+        if is_full:
+            _log(log, f"  真正未保护函数:       {total_truly_unprotected}")
+            _log(log, f"  其他函数总数:         {total_other_funcs}")
+            _log(log, f"  vcall 调用点:         {total_vcall_sites} (有CFI:{total_vcall_cfi} 无CFI:{total_vcall_no_cfi})")
+            _log(log, f"  icall 调用点:         {total_icall_sites} (有CFI:{total_icall_cfi} 无CFI:{total_icall_no_cfi})")
+        else:
+            _log(log, f"  未保护函数:           {total_truly_unprotected}")
+        if is_full and dimension is None:
+            pass
+        if not is_full and dimension in ('vcall', 'icall'):
+            _log(log, f"  vcall 调用点:         {total_vcall_sites} (有CFI:{total_vcall_cfi} 无CFI:{total_vcall_no_cfi})")
+            _log(log, f"  icall 调用点:         {total_icall_sites} (有CFI:{total_icall_cfi} 无CFI:{total_icall_no_cfi})")
+    if function_detail and aarch64_count > 0 and (is_full or dimension in ('pac', 'bti')):
         _log(log, "")
         _log(log, f"  AArch64 .so:          {aarch64_count}")
         _log(log, f"  PAC 签名指令:         {total_pac_sign}")
         _log(log, f"  PAC 认证指令:         {total_pac_auth}")
-        _log(log, f"  RETAA/RETAB:          {total_retaa}/{total_retab}")
+        if is_full:
+            _log(log, f"  RETAA/RETAB:          {total_retaa}/{total_retab}")
         _log(log, f"  BTI 指令:            {total_bti}")
-        _log(log, f"  PAC 函数保护:        {total_pac_func_protected} (sign_only:{total_pac_func_sign_only} no_pac:{total_pac_func_no_pac})")
+        if is_full:
+            _log(log, f"  PAC 函数保护:        {total_pac_func_protected} (sign_only:{total_pac_func_sign_only} no_pac:{total_pac_func_no_pac})")
+        else:
+            _log(log, f"  PAC 函数保护:        {total_pac_func_protected}")
         _log(log, f"  BTI 函数覆盖:        {total_bti_func_with} / {total_bti_func_with + total_bti_func_without}")
     _log(log, "")
 
@@ -948,5 +984,9 @@ def run_detection(lib_dir, ELFFile, function_detail=True, progress=None, log=Non
         'total_pac_func_no_pac': total_pac_func_no_pac,
         'total_bti_func_with': total_bti_func_with,
         'total_bti_func_without': total_bti_func_without,
+        'has_vcall': 1 if (is_full or dimension == 'vcall') else 0,
+        'has_icall': 1 if (is_full or dimension == 'icall') else 0,
+        'has_pac': 1 if (is_full or dimension == 'pac') else 0,
+        'has_bti': 1 if (is_full or dimension == 'bti') else 0,
     }
     return results, summary

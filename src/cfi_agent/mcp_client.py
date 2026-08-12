@@ -1,6 +1,5 @@
 import asyncio
 import threading
-import json
 from typing import Optional
 
 from .tools import Tool
@@ -27,8 +26,6 @@ class MCPClient:
         self.loop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._session = None
-        self._stack = None
-        self._session_ctx = None
         self._ready = threading.Event()
         self._error = None
         self._stop = asyncio.Event()
@@ -45,16 +42,17 @@ class MCPClient:
 
     async def _main(self):
         try:
-            self._stack = stdio_client(self.params)
-            read, write = await self._stack.__aenter__()
-            self._session_ctx = ClientSession(read, write)
-            self._session = await self._session_ctx.__aenter__()
-            await self._session.initialize()
-            self._ready.set()
-            await self._stop.wait()
+            async with stdio_client(self.params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    self._session = session
+                    await session.initialize()
+                    self._ready.set()
+                    await self._stop.wait()
         except Exception as e:
             self._error = e
             self._ready.set()
+        finally:
+            self._session = None
 
     @property
     def connected(self):
@@ -87,6 +85,7 @@ class MCPClient:
             self.loop.call_soon_threadsafe(self._stop.set)
         except Exception:
             pass
+        self._thread.join(timeout=5)
 
 
 def create_sqlite_client(db_path, python_exe=None) -> Optional[MCPClient]:

@@ -176,30 +176,50 @@ def main(
             if not os.path.isdir(od):
                 console.print(f"[yellow]输出目录不存在: {od}[/yellow]")
                 continue
-            items = os.listdir(od)
+            items = sorted(os.listdir(od))
             if not items:
                 console.print(f"[green]{od} 已是空的[/green]")
                 continue
-            console.print(f"将清空 [cyan]{od}[/cyan]，含 {len(items)} 项：")
-            for it in items[:12]:
+            console.print(f"[cyan]{od}[/cyan] 含 {len(items)} 个输出：")
+            console.print(f"  [0] 全部清除")
+            for idx, it in enumerate(items, 1):
+                console.print(f"  [{idx}] {it}")
+            console.print()
+            choice = input("选择要清除的编号 (多个用逗号分隔，0=全部，回车=取消): ").strip()
+            if not choice:
+                console.print("[yellow]已取消[/yellow]")
+                continue
+            # Parse choices
+            nums = set()
+            for part in choice.replace('，', ',').replace('、', ',').split(','):
+                part = part.strip()
+                if part.isdigit():
+                    nums.add(int(part))
+            if 0 in nums:
+                to_delete = items
+            else:
+                to_delete = [items[n-1] for n in nums if 1 <= n <= len(items)]
+            if not to_delete:
+                console.print("[yellow]无有效选择，已取消[/yellow]")
+                continue
+            console.print(f"将清除 {len(to_delete)} 项：")
+            for it in to_delete:
                 console.print(f"  {it}")
-            if len(items) > 12:
-                console.print(f"  ...等共 {len(items)} 项")
-            ans = input("确认清空？(y/n，默认 n): ").strip().lower()
+            ans = input("确认清除？(y/n，默认 n): ").strip().lower()
             if ans == 'y':
-                # Stop Flask service first — it locks the output directory
                 from .engine.service import stop_service
                 stop_service()
-                for it in items:
+                for it in to_delete:
                     p = os.path.join(od, it)
                     try:
                         if os.path.isdir(p):
                             shutil.rmtree(p)
                         else:
                             os.remove(p)
+                        console.print(f"  [green]已删除 {it}[/green]")
                     except Exception as e:
-                        console.print(f"[red]删除失败 {it}: {e}[/red]")
-                console.print(f"[green]已清空 {od}[/green]")
+                        console.print(f"  [red]删除失败 {it}: {e}[/red]")
+                console.print(f"[green]清除完成[/green]")
             else:
                 console.print("[yellow]已取消[/yellow]")
             continue

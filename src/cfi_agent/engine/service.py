@@ -3,23 +3,6 @@ import sys
 import subprocess
 
 
-def generate_bat_files(output_dir):
-    bat_start = os.path.join(output_dir, '启动服务.bat')
-    with open(bat_start, 'w', encoding='gbk') as f:
-        f.write('@echo off\r\n')
-        f.write('cd /d "%~dp0"\r\n')
-        f.write('python app.py\r\n')
-        f.write('pause\r\n')
-
-    bat_stop = os.path.join(output_dir, '停止服务.bat')
-    with open(bat_stop, 'w', encoding='gbk') as f:
-        f.write('@echo off\r\n')
-        f.write('for /f "tokens=5" %%a in (\'netstat -ano ^| findstr ":5000.*LISTENING"\') do taskkill /f /pid %%a\r\n')
-        f.write('echo 服务已停止\r\n')
-        f.write('pause\r\n')
-    return bat_start, bat_stop
-
-
 def start_service(output_dir):
     import time
     import urllib.request

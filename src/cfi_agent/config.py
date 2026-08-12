@@ -80,10 +80,6 @@ def get_defaults(cfg):
     }
 
 
-def get_mcp_config(cfg):
-    return cfg.get('mcp', {}) or {}
-
-
 def get_skill_paths(cfg):
     root = cfg.get('_root', '.')
     paths = cfg.get('skills', {}).get('paths', ['skills'])

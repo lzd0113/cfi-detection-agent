@@ -2,7 +2,7 @@ import os
 import sqlite3
 
 
-def generate_sqlite(summary, modules, name_table, output_dir):
+def generate_sqlite(summary, modules, name_table, output_dir, detection_type='unknown'):
     db_file = os.path.join(output_dir, 'cfi_detection.sqlite')
     if os.path.exists(db_file):
         os.remove(db_file)
@@ -64,11 +64,18 @@ def generate_sqlite(summary, modules, name_table, output_dir):
         id INTEGER PRIMARY KEY, name TEXT
     );
     CREATE TABLE so_functions (
-        so_id INTEGER, func_id INTEGER, func_type TEXT
+        so_id INTEGER, func_id INTEGER, func_type TEXT, mangled_count INTEGER DEFAULT 1
     );
-    CREATE INDEX idx_sf_so ON so_functions(so_id);
-    CREATE INDEX idx_sf_type ON so_functions(func_type);
-    CREATE INDEX idx_fid ON so_functions(func_id);
+    CREATE TABLE snapshot_meta (
+        detection_type TEXT,
+        detection_time TEXT,
+        lib_dir TEXT,
+        has_functions INTEGER,
+        has_vcall INTEGER,
+        has_icall INTEGER,
+        has_pac INTEGER,
+        has_bti INTEGER
+    );
     """)
 
     q = lambda n: ','.join(['?'] * n)
@@ -110,6 +117,7 @@ def generate_sqlite(summary, modules, name_table, output_dir):
                        [(i, n) for i, n in enumerate(name_table)])
 
     so_func_rows = []
+    from collections import Counter as _Counter
     for m in modules:
         for so in m['so_files']:
             cursor.execute("INSERT INTO so_files "
@@ -148,11 +156,36 @@ def generate_sqlite(summary, modules, name_table, output_dir):
                 for fi in so.get(fk, []):
                     so_func_rows.append((so_id, fi, label))
 
-    so_func_rows = list(set(so_func_rows))  # deduplicate (same func_id from alias symbols)
-    cursor.executemany('INSERT INTO so_functions VALUES (?,?,?)', so_func_rows)
+    # Count mangled names per (so_id, func_id, func_type) — preserves alias info
+    _counter = _Counter(so_func_rows)
+    cursor.executemany('INSERT INTO so_functions VALUES (?,?,?,?)',
+                       [(s, f, t, c) for (s, f, t), c in _counter.items()])
+
+    from datetime import datetime as _dt
+    cursor.execute('INSERT INTO snapshot_meta VALUES (?,?,?,?,?,?,?,?)', (
+        detection_type,
+        _dt.now().strftime('%Y-%m-%d %H:%M:%S'),
+        summary.get('lib_dir', ''),
+        1 if summary.get('function_detail') else 0,
+        summary.get('has_vcall', 0),
+        summary.get('has_icall', 0),
+        summary.get('has_pac', 0),
+        summary.get('has_bti', 0),
+    ))
 
     conn.commit()
-    cursor.execute('VACUUM')  # compact database, reclaim free pages
+
+    cursor.executescript("""
+    CREATE INDEX idx_sf_so ON so_functions(so_id);
+    CREATE INDEX idx_sf_type ON so_functions(func_type);
+    CREATE INDEX idx_fid ON so_functions(func_id);
+    CREATE INDEX idx_so_module ON so_files(module);
+    CREATE INDEX idx_so_path ON so_files(path);
+    CREATE INDEX idx_so_cfi ON so_files(cfi_enabled);
+    CREATE INDEX idx_nt_name ON name_table(name);
+    """)
+
+    cursor.execute('VACUUM')
     conn.close()
 
     print(f"SQLite 数据库已保存: {db_file}")

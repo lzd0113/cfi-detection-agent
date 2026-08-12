@@ -2,6 +2,8 @@ import os
 import sys
 import subprocess
 
+from .constants import VENDOR_LIBS
+
 
 def ensure_openpyxl():
     try:
@@ -122,7 +124,7 @@ def generate_excel(summary, modules, output_dir, include_calls=True):
             ('BTI 函数覆盖', summary.get('total_bti_func_with', 0)),
             ('BTI 函数覆盖率', f'{bti_rate}%'),
         ]
-    stats.append(('预编译厂商库 (无CFI)', 4))
+    stats.append(('预编译厂商库 (无CFI)', len(VENDOR_LIBS)))
 
     for row_idx, (label, value) in enumerate(stats, start=3):
         ws1.cell(row=row_idx, column=1, value=label)
@@ -153,8 +155,17 @@ def generate_excel(summary, modules, output_dir, include_calls=True):
 
     if function_detail:
         base_headers = ['模块', '说明', '.so 文件路径', 'CFI状态', '.so总数', 'CFI开启', 'CFI未开启', '.so覆盖率', 'CFI保护函数', 'CFI未保护函数', '函数总数', '函数保护率', 'CFI基础设施函数']
-        call_headers = ['vcall调用点', 'vcall有CFI', 'vcall无CFI', 'vcall保护率', 'icall调用点', 'icall有CFI', 'icall无CFI', 'icall保护率'] if include_calls else []
-        pac_bti_headers = ['PAC签名', 'PAC认证', 'PAC覆盖率', 'BTI指令', 'BTI覆盖率']
+        call_headers = []
+        if include_calls:
+            if summary.get('has_vcall', 1):
+                call_headers += ['vcall调用点', 'vcall有CFI', 'vcall无CFI', 'vcall保护率']
+            if summary.get('has_icall', 1):
+                call_headers += ['icall调用点', 'icall有CFI', 'icall无CFI', 'icall保护率']
+        pac_bti_headers = []
+        if summary.get('has_pac', 0):
+            pac_bti_headers += ['PAC签名', 'PAC认证', 'PAC覆盖率']
+        if summary.get('has_bti', 0):
+            pac_bti_headers += ['BTI指令', 'BTI覆盖率']
         merged_headers = base_headers + call_headers + pac_bti_headers + ['负责人']
     else:
         merged_headers = ['模块', '说明', '.so 文件路径', 'CFI状态', '.so总数', 'CFI开启', 'CFI未开启', '.so覆盖率', '负责人']
@@ -173,17 +184,23 @@ def generate_excel(summary, modules, output_dir, include_calls=True):
             total_funcs_mod = m['cfi_protected_count'] + m['truly_unprotected_count']
             func_rate_mod = round(m['cfi_protected_count'] / (m['cfi_protected_count'] + m['truly_unprotected_count']) * 100, 1) if (m['cfi_protected_count'] + m['truly_unprotected_count']) > 0 else 0
             module_row = [m['module'], m['desc'], '', '', m['total_so'], m['cfi_enabled_so'], m['cfi_not_enabled_so'], f'{m["cfi_rate_percent"]}%', m['cfi_protected_count'], m['truly_unprotected_count'], total_funcs_mod, f'{func_rate_mod}%', m.get('cfi_infra_count', 0)]
-            if include_calls:
-                module_row += [m['vcall_site_count'], m['vcall_cfi_count'], m['vcall_no_cfi_count'], f'{m["vcall_cfi_rate"]}%', m['icall_site_count'], m['icall_cfi_count'], m['icall_no_cfi_count'], f'{m["icall_cfi_rate"]}%', '']
-            else:
-                module_row += ['']
+            has_vcall = summary.get('has_vcall', 0)
+            has_icall = summary.get('has_icall', 0)
+            has_pac = summary.get('has_pac', 0)
+            has_bti = summary.get('has_bti', 0)
+            if include_calls and has_vcall:
+                module_row += [m['vcall_site_count'], m['vcall_cfi_count'], m['vcall_no_cfi_count'], f'{m["vcall_cfi_rate"]}%']
+            if include_calls and has_icall:
+                module_row += [m['icall_site_count'], m['icall_cfi_count'], m['icall_no_cfi_count'], f'{m["icall_cfi_rate"]}%']
             pac_total_mod = m.get('pac_func_protected', 0) + m.get('pac_func_sign_only', 0) + m.get('pac_func_no_pac', 0)
             pac_rate_mod = round(m.get('pac_func_protected', 0) / pac_total_mod * 100, 1) if pac_total_mod > 0 else 0
             bti_total_mod = m.get('bti_func_with', 0) + m.get('bti_func_without', 0)
             bti_rate_mod = round(m.get('bti_func_with', 0) / bti_total_mod * 100, 1) if bti_total_mod > 0 else 0
-            # Replace the owner '' at end with PAC/BTI data + new owner ''
-            module_row[-1] = m.get('pac_sign_count', 0)
-            module_row += [m.get('pac_auth_count', 0), f'{pac_rate_mod}%', m.get('bti_count', 0), f'{bti_rate_mod}%', '']
+            if has_pac:
+                module_row += [m.get('pac_sign_count', 0), m.get('pac_auth_count', 0), f'{pac_rate_mod}%']
+            if has_bti:
+                module_row += [m.get('bti_count', 0), f'{bti_rate_mod}%']
+            module_row += ['']
         else:
             module_row = [m['module'], m['desc'], '', '', m['total_so'], m['cfi_enabled_so'], m['cfi_not_enabled_so'], f'{m["cfi_rate_percent"]}%' if m['total_so'] > 0 else '0%', '']
         for col, val in enumerate(module_row, 1):
@@ -207,15 +224,21 @@ def generate_excel(summary, modules, output_dir, include_calls=True):
                     func_rate = round(cfi_count / (cfi_count + unprot_count) * 100, 1) if (cfi_count + unprot_count) > 0 else 0
                     rate_fill = fill_for_rate(func_rate) if func_rate > 0 else dark_fill
                     so_row = [m['module'], '', path, cfi_status, '', '', '', '', cfi_count, unprot_count, total, f'{func_rate}%', so.get('cfi_infra_count', 0)]
-                    if include_calls:
+                    if include_calls and has_vcall:
                         so_vcall_rate = round(so.get('vcall_cfi_count', 0) / so.get('vcall_site_count', 1) * 100, 1) if so.get('vcall_site_count', 0) > 0 else 0
+                        so_row += [so.get('vcall_site_count', 0), so.get('vcall_cfi_count', 0), so.get('vcall_no_cfi_count', 0), f'{so_vcall_rate}%']
+                    if include_calls and has_icall:
                         so_icall_rate = round(so.get('icall_cfi_count', 0) / so.get('icall_site_count', 1) * 100, 1) if so.get('icall_site_count', 0) > 0 else 0
-                        so_row += [so.get('vcall_site_count', 0), so.get('vcall_cfi_count', 0), so.get('vcall_no_cfi_count', 0), f'{so_vcall_rate}%', so.get('icall_site_count', 0), so.get('icall_cfi_count', 0), so.get('icall_no_cfi_count', 0), f'{so_icall_rate}%']
+                        so_row += [so.get('icall_site_count', 0), so.get('icall_cfi_count', 0), so.get('icall_no_cfi_count', 0), f'{so_icall_rate}%']
                     so_pac_total = so.get('pac_func_protected', 0) + so.get('pac_func_sign_only', 0) + so.get('pac_func_no_pac', 0)
                     so_pac_rate = round(so.get('pac_func_protected', 0) / so_pac_total * 100, 1) if so_pac_total > 0 else 0
                     so_bti_total = so.get('bti_func_with', 0) + so.get('bti_func_without', 0)
                     so_bti_rate = round(so.get('bti_func_with', 0) / so_bti_total * 100, 1) if so_bti_total > 0 else 0
-                    so_row += [so.get('pac_sign_count', 0), so.get('pac_auth_count', 0), f'{so_pac_rate}%', so.get('bti_count', 0), f'{so_bti_rate}%', '']
+                    if has_pac:
+                        so_row += [so.get('pac_sign_count', 0), so.get('pac_auth_count', 0), f'{so_pac_rate}%']
+                    if has_bti:
+                        so_row += [so.get('bti_count', 0), f'{so_bti_rate}%']
+                    so_row += ['']
                 else:
                     so_row = [m['module'], '', path, cfi_status, '', '', '', '', '']
             else:
@@ -226,13 +249,19 @@ def generate_excel(summary, modules, output_dir, include_calls=True):
                     unprot_count_n = so.get('truly_unprotected_count', 0)
                     total_n = cfi_count_n + unprot_count_n
                     so_row = [m['module'], '', path, cfi_status, '', '', '', '', cfi_count_n, unprot_count_n, total_n, '0%', so.get('cfi_infra_count', 0)]
-                    if include_calls:
-                        so_row += [0, 0, 0, '0%', 0, 0, 0, '0%']
+                    if include_calls and has_vcall:
+                        so_row += [0, 0, 0, '0%']
+                    if include_calls and has_icall:
+                        so_row += [0, 0, 0, '0%']
                     so_pac_total_n = so.get('pac_func_protected', 0) + so.get('pac_func_sign_only', 0) + so.get('pac_func_no_pac', 0)
                     so_pac_rate_n = round(so.get('pac_func_protected', 0) / so_pac_total_n * 100, 1) if so_pac_total_n > 0 else 0
                     so_bti_total_n = so.get('bti_func_with', 0) + so.get('bti_func_without', 0)
                     so_bti_rate_n = round(so.get('bti_func_with', 0) / so_bti_total_n * 100, 1) if so_bti_total_n > 0 else 0
-                    so_row += [so.get('pac_sign_count', 0), so.get('pac_auth_count', 0), f'{so_pac_rate_n}%', so.get('bti_count', 0), f'{so_bti_rate_n}%', '']
+                    if has_pac:
+                        so_row += [so.get('pac_sign_count', 0), so.get('pac_auth_count', 0), f'{so_pac_rate_n}%']
+                    if has_bti:
+                        so_row += [so.get('bti_count', 0), f'{so_bti_rate_n}%']
+                    so_row += ['']
                 else:
                     so_row = [m['module'], '', path, cfi_status, '', '', '', '', '']
             for col, val in enumerate(so_row, 1):
@@ -243,7 +272,7 @@ def generate_excel(summary, modules, output_dir, include_calls=True):
             ws2.cell(row=row_idx, column=4).fill = green_fill if so.get('cfi_enabled') else red_fill
             if function_detail:
                 ws2.cell(row=row_idx, column=12).fill = rate_fill
-            owner_col = (27 if include_calls else 19) if function_detail else 9
+            owner_col = len(merged_headers)
             ws2.cell(row=row_idx, column=owner_col).fill = owner_fill
             ws2.row_dimensions[row_idx].outline_level = 1
             row_idx += 1
@@ -253,7 +282,17 @@ def generate_excel(summary, modules, output_dir, include_calls=True):
 
     from openpyxl.utils import get_column_letter
     if function_detail:
-        merged_widths = [20, 14, 50, 10, 10, 10, 10, 12, 14, 16, 12, 12, 12, 12, 10, 10, 12, 10, 12, 10, 12, 10, 10, 8, 10, 8, 15]
+        merged_widths = [20, 14, 50, 10, 10, 10, 10, 12, 14, 16, 12, 12, 12]
+        if include_calls:
+            if summary.get('has_vcall', 0):
+                merged_widths += [12, 10, 10, 8]
+            if summary.get('has_icall', 0):
+                merged_widths += [12, 10, 10, 8]
+        if summary.get('has_pac', 0):
+            merged_widths += [10, 10, 8]
+        if summary.get('has_bti', 0):
+            merged_widths += [10, 8]
+        merged_widths += [15]
     else:
         merged_widths = [20, 14, 50, 10, 10, 10, 10, 12, 15]
     for i, w in enumerate(merged_widths, 1):
@@ -322,12 +361,7 @@ def generate_excel(summary, modules, output_dir, include_calls=True):
         ws5.cell(row=2, column=col, value=h)
     style_header_row(ws5, 2, len(vendor_headers))
 
-    vendor_libs = [
-        ('libmali-bifrost-g52-g2p0-ohos.so', '40MB', 'Mali GPU driver', 'NO CFI'),
-        ('librga.z.so', '63KB', 'RGA 2D graphics', 'NO CFI'),
-        ('librockchip_mpp.z.so', '1.1MB', 'Media processing', 'NO CFI'),
-        ('librkaiq.z.so', '3.3MB', 'ISP image processing', 'NO CFI'),
-    ]
+    vendor_libs = [(name, size, func, 'NO CFI') for name, size, func in VENDOR_LIBS]
     for row_idx, (name, size, func, status) in enumerate(vendor_libs, start=3):
         for col, val in enumerate([name, size, func, status, ''], 1):
             cell = ws5.cell(row=row_idx, column=col, value=val)

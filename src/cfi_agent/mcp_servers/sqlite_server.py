@@ -33,10 +33,13 @@ def list_tables() -> str:
 
 @mcp.tool()
 def describe_table(table: str) -> str:
-    """查看某张表的列结构（列名与类型）。"""
+    """查看某张表的列结构（列名与类型）。可用表：summary, modules, so_files, name_table, so_functions。"""
     conn = _connect()
     try:
-        cur = conn.execute(f"PRAGMA table_info({table})")
+        valid = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+        if table not in valid:
+            return json.dumps({"error": f"表 '{table}' 不存在，可用: {', '.join(valid)}"}, ensure_ascii=False)
+        cur = conn.execute(f'PRAGMA table_info("{table}")')
         cols = [{"name": r[1], "type": r[2]} for r in cur.fetchall()]
         return json.dumps(cols, ensure_ascii=False)
     finally:

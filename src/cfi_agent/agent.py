@@ -44,11 +44,12 @@ class Agent:
             "",
             "你的工作方式：通过工具完成实际工作——执行检测、查询结果、生成报告、管理服务。绝不要臆造检测结果或函数名，必须调用工具获取真实数据后再回答用户。",
             "",
-            "检测算法本身是确定性的（pyelftools 解析 ELF + ARM 32-bit Thumb 指令解码），你的职责是：理解用户意图 → 选择并调用合适工具 → 传参 → 解读返回结果给用户。检测耗时较长（full≈3分钟），调用 run_cfi_detection 前可告知用户预计耗时。",
+            "检测算法本身是确定性的（pyelftools 解析 ELF + ARM 32-bit Thumb 指令解码），你的职责是：理解用户意图 → 选择并调用合适工具 → 传参 → 解读返回结果给用户。检测耗时较长（full≈2-4分钟，单维度≈1-3分钟，已并行化处理，取决于 .so 数量和 CPU 核心数），调用检测工具前可告知用户预计耗时。",
             "",
-            "工具选择原则（重要，务必遵守）：查询/分析类需求（如\"哪些没开CFI\"\"某模块情况\"\"某函数是否受保护\"\"总体统计\"\"对比变化\"）优先用 query_* 工具查已有 SQLite（秒回，不跑检测）；若返回\"未找到数据库\"说明尚未检测，再用 detect_so_level（快速 .so 级，不生成报告）。只有用户明确要\"执行检测\"\"跑一遍\"\"生成全套报告\"才用 run_cfi_detection（full 全流程+SQLite/HTML/Excel，约3分钟）。切勿把查询需求当成完整检测。",
+            "工具选择原则（重要，务必遵守）：查询/分析类需求（如\"哪些没开CFI\"\"某模块情况\"\"某函数是否受保护\"\"总体统计\"\"对比变化\"）优先用 query_* 工具查已有 SQLite（秒回，不跑检测）；若返回\"未找到数据库\"说明尚未检测，再用 detect_so_level（快速 .so 级，不生成报告）。只有用户明确要\"执行检测\"\"跑一遍\"\"生成全套报告\"才用 run_cfi_detection（full 全流程+SQLite/HTML/Excel，约2-4分钟）。切勿把查询需求当成完整检测。",
             "回答用户时用中文。涉及数值时直接引用工具返回的统计。",
             "规划优先：对完整检测或需要调用多个 detect_* 工具的组合检测任务，先用 propose_plan 工具提出执行计划（目标 + 步骤 + 每步用哪个工具 + 原因）供用户确认，用户批准后再依次执行；对单维度快速查询（如只看 vcall 保护率、搜某函数、查总体统计）可直接调用对应工具，不必先规划。",
+            "执行前说明：开始执行任何检测任务前，必须先列出本次任务将使用到的工具清单（工具名 + 用途），让用户清楚整个流程会调用哪些工具。格式示例：「本次检测将使用以下工具：1. detect_vcall — vcall 虚函数调用检测 2. generate_excel — 生成报告」，然后再开始执行。",
             "组合调用：用户要多个维度时（如\"分析 .so 级和函数级\"\"看 vcall 和 icall 情况\"），可依次调用多个 detect_* 工具组合，每次调用结果会回传给你，你结合全部结果综合回答。简单 2-3 个工具组合可直接调用，不必每次都走 propose_plan。",
             "维度包含（重要）：detect_functions 已含 .so 级检测（不需先调 detect_so_level）；detect_vcall/icall 已含 .so 级 + 函数级检测（不需先调 detect_so_level/detect_functions）。调用一个 detect_functions/vcall/icall 即一次性输出该维度及更低维度的完整结果。只在用户明确只要 .so 级摸底（不要函数/调用点）时才用 detect_so_level。",
             "反思自检：完整检测后调用 reflect_check 工具对 summary 做合理性校验（so总数一致性、保护率范围、有调用点却无保护等），发现异常向用户提示，确保结果可信。",
@@ -66,7 +67,7 @@ class Agent:
         return "\n".join(parts)
 
     def _connect_mcp(self):
-        output_dir = self.defaults.get('output_dir')
+        output_dir = self.registry.last_output_dir or self.defaults.get('output_dir')
         if not output_dir:
             return
         try:
@@ -132,15 +133,21 @@ class Agent:
             for tc in tool_calls:
                 name = tc["function"]["name"]
                 args = tc["function"]["arguments"]
-                if name == "run_cfi_detection":
+                if name in ('run_cfi_detection', 'detect_so_level', 'detect_functions',
+                            'detect_vcall', 'detect_icall', 'detect_pac', 'detect_bti'):
                     ran_detection = True
-                if name == "propose_plan" and on_plan:
+                if name == "propose_plan":
                     parsed = json.loads(args) if isinstance(args, str) else args
-                    approved = on_plan(parsed)
-                    result = json.dumps({"approved": approved,
-                                         "message": "用户已批准，请按计划依次调用工具执行" if approved
-                                         else "用户未批准，请询问用户调整需求或停止"},
-                                        ensure_ascii=False)
+                    if on_plan:
+                        approved = on_plan(parsed)
+                        result = json.dumps({"approved": approved,
+                                             "message": "用户已批准，请按计划依次调用工具执行" if approved
+                                             else "用户未批准，请询问用户调整需求或停止"},
+                                            ensure_ascii=False)
+                    else:
+                        result = json.dumps({"approved": None,
+                                             "message": "计划已提出，请直接询问用户是否批准后继续执行",
+                                             "plan": parsed}, ensure_ascii=False)
                 else:
                     result = self.registry.call(name, args)
                 if len(result) > MAX_TOOL_RESULT:
