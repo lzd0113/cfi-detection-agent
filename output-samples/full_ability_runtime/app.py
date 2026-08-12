@@ -169,7 +169,5 @@ def api_function_locations():
     return jsonify([dict(r) for r in rows])
 
 if __name__ == '__main__':
-    print(f"\u6570\u636e\u5e93: {DB_PATH}")
-    print(f"\u670d\u52a1\u5730\u5740: http://localhost:5000")
-    print(f"\u6309 Ctrl+C \u9000\u51fa")
-    app.run(debug=False, port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=False, port=port, host='0.0.0.0')

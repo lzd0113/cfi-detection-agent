@@ -3,6 +3,7 @@
     name: cfi-detection-report
     env: python
     plan: free
+    rootDir: output-samples/full_ability_runtime
     buildCommand: pip install flask
     startCommand: python app.py
     healthCheckPath: /api/summary
