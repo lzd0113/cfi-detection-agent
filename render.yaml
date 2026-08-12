@@ -1,0 +1,8 @@
+﻿services:
+  - type: web
+    name: cfi-detection-report
+    env: python
+    plan: free
+    buildCommand: pip install flask
+    startCommand: python app.py
+    healthCheckPath: /api/summary

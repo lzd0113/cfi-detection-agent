@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenHarmony CFI 检测报告</title>
+<script src="echarts.min.js"></script>
+<style>
+:root{--bg:#eef2f7;--card:#fff;--primary:#4f46e5;--primary-light:#818cf8;--green:#059669;--red:#dc2626;--blue:#2563eb;--orange:#d97706;--text:#0f172a;--text-mid:#475569;--text-light:#94a3b8;--border:#e2e8f0;--shadow:0 1px 3px rgba(0,0,0,.06);--shadow-md:0 4px 6px rgba(0,0,0,.04),0 10px 15px rgba(0,0,0,.05);--shadow-lg:0 10px 25px rgba(0,0,0,.08),0 20px 48px rgba(0,0,0,.06);}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;}
+.hero{background:linear-gradient(135deg,#1e1b4b 0%,#312e81 30%,#3730a3 60%,#4338ca 100%);color:#fff;padding:56px 20px 64px;text-align:center;position:relative;}
+.hero h1{font-size:2.4rem;font-weight:800;margin-bottom:8px;letter-spacing:-.5px;text-shadow:0 2px 20px rgba(0,0,0,.2);}
+.hero p{opacity:.8;font-size:1.05rem;}
+.hero .pill{display:inline-block;margin-top:12px;padding:4px 16px;border-radius:50px;background:rgba(255,255,255,.12);backdrop-filter:blur(10px);font-size:.85rem;}
+.container{max-width:1180px;margin:-32px auto 0;padding:0 20px 40px;position:relative;z-index:2;}
+.section{background:var(--card);border-radius:14px;padding:28px;margin-bottom:20px;box-shadow:var(--shadow-lg);}
+.section h2{font-size:1.35rem;font-weight:700;margin-bottom:18px;display:flex;align-items:center;gap:8px;}
+.section h2::before{content:'';display:inline-block;width:4px;height:22px;background:var(--primary);border-radius:4px;}
+.stat{background:linear-gradient(135deg,#f8fafc,#f1f5f9);border-radius:12px;padding:20px 14px;text-align:center;border:1px solid var(--border);transition:all .25s;}
+.stat:hover{transform:translateY(-4px);box-shadow:var(--shadow-md);border-color:var(--primary-light);}
+.stat .num{font-size:1.75rem;font-weight:800;line-height:1.1;}
+.stat .lbl{font-size:.75rem;color:var(--text-light);margin-top:6px;font-weight:500;}
+.charts-row{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin:24px 0 8px;padding:24px 16px;background:linear-gradient(135deg,#f8fafc,#eef2ff);border-radius:14px;}
+.chart-box{width:200px;height:230px;}
+.chart-box.clickable{cursor:pointer;}
+.chart-box.clickable:hover{transform:scale(1.05);transition:transform .2s;}
+.module-block{background:var(--card);border-radius:14px;margin-bottom:10px;overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--border);transition:all .25s;}
+.module-block:hover{box-shadow:var(--shadow-md);border-color:#c7d2fe;}
+.module-head{background:linear-gradient(135deg,#f8fafc,#f1f5f9);padding:14px 22px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-left:4px solid var(--primary);transition:background .2s;}
+.module-head:hover{background:linear-gradient(135deg,#eef2ff,#e0e7ff);}
+.module-head h3{font-size:1.15rem;font-weight:700;}
+.module-head h3 small{font-size:.82rem;color:var(--text-light);font-weight:400;margin-left:4px;}
+.mod-stats{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.82rem;color:var(--text-mid);}
+.badge{display:inline-block;padding:3px 11px;border-radius:50px;font-size:.72rem;font-weight:600;transition:transform .15s;}
+.badge:hover{transform:scale(1.08);}
+.badge.green{background:#d1fae5;color:#065f46;}
+.badge.red{background:#fee2e2;color:#991b1b;}
+.badge.blue{background:#dbeafe;color:#1e40af;}
+.badge.dark{background:#e2e8f0;color:#475569;}
+.module-content{padding:10px 22px;display:none;}
+.so-section{margin-bottom:6px;border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:box-shadow .2s;}
+.so-section:hover{box-shadow:0 2px 8px rgba(0,0,0,.06);}
+.so-header{padding:11px 16px;background:linear-gradient(135deg,#f8fafc,#f8fafc);cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:background .15s;}
+.so-header:hover{background:linear-gradient(135deg,#eef2ff,#e0e7ff);}
+.so-header.no-cfi{opacity:.6;}
+.so-path{font-family:'SF Mono','Courier New',monospace;font-size:.83rem;}
+.so-stats{display:flex;gap:5px;}
+.so-detail{padding:14px 16px;background:#fff;display:none;}
+.mini-charts{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;padding:14px;background:linear-gradient(135deg,#f8fafc,#eef2ff);border-radius:12px;margin-bottom:12px;}
+.mini-chart-box{width:150px;height:170px;cursor:pointer;}
+.mini-chart-box.noclick{cursor:default;}
+.empty{color:var(--text-light);font-style:italic;padding:8px 0;}
+.loading{text-align:center;padding:24px;}
+.spinner{display:inline-block;width:30px;height:30px;border:3px solid #e2e8f0;border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.footer{text-align:center;padding:32px 20px;color:var(--text-light);font-size:.85rem;}
+.search-box{width:100%;padding:11px 16px;border:2px solid var(--border);border-radius:10px;font-size:.95rem;margin-bottom:14px;background:#fff;}
+.search-box:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 4px rgba(79,70,229,.1);}
+.search-results{margin-bottom:14px;background:#fff;border-radius:10px;overflow:hidden;border:1px solid var(--border);}
+.search-result-item{padding:9px 14px;border-bottom:1px solid #f1f5f9;font-size:.82rem;cursor:pointer;transition:background .15s;}
+.search-result-item:hover{background:#eef2ff;}
+.search-result-item:last-child{border-bottom:none;}
+/* Modal for function detail */
+.modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:1000;display:none;justify-content:center;align-items:flex-start;padding:40px 20px;overflow-y:auto;}
+.modal-overlay.active{display:flex;}
+.modal{background:#fff;border-radius:14px;width:900px;max-width:95%;max-height:90vh;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden;min-width:400px;min-height:200px;display:flex;flex-direction:column;position:relative;}
+.modal-resize{position:absolute;z-index:10;}
+.modal-resize.r{right:0;top:0;width:6px;height:100%;cursor:ew-resize;}
+.modal-resize.b{bottom:0;left:0;width:100%;height:6px;cursor:ns-resize;}
+.modal-resize.br{right:0;bottom:0;width:12px;height:12px;cursor:nwse-resize;}
+.modal-resize.l{left:0;top:0;width:6px;height:100%;cursor:ew-resize;}
+.modal-resize.t{top:0;left:0;width:100%;height:6px;height:6px;cursor:ns-resize;}
+.modal-resize.bl{left:0;bottom:0;width:12px;height:12px;cursor:nesw-resize;}
+.modal-resize.tr{right:0;top:0;width:12px;height:12px;cursor:nesw-resize;}
+.modal-resize.tl{left:0;top:0;width:12px;height:12px;cursor:nwse-resize;}
+.modal-header{background:linear-gradient(135deg,#1e1b4b,#4338ca);color:#fff;padding:20px 28px;display:flex;justify-content:space-between;align-items:center;cursor:move;flex-shrink:0;}
+.modal-header h3{font-size:1.2rem;font-weight:700;}
+.modal-close{background:rgba(255,255,255,.2);border:none;color:#fff;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:1.2rem;display:flex;align-items:center;justify-content:center;transition:background .2s;}
+.modal-close:hover{background:rgba(255,255,255,.3);}
+.modal-body{padding:20px 28px;overflow-y:auto;flex:1;}
+.func-section{margin-bottom:20px;}
+.func-section h4{font-size:1rem;font-weight:700;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid var(--border);}
+.func-section.protected h4{color:var(--green);}
+.func-section.unprotected h4{color:var(--red);}
+.func-section.orange h4{color:var(--orange);}
+.func-section.infra h4{color:#6b21a8;}
+.func-table{width:100%;border-collapse:collapse;font-size:.82rem;}
+.func-table th{background:#f8fafc;padding:7px 10px;text-align:left;border-bottom:2px solid var(--border);font-weight:600;}
+.func-table td{padding:5px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top;}
+.func-table tr:nth-child(even){background:#fafbfc;}
+.mono{font-family:'SF Mono','Courier New',monospace;word-break:break-all;}
+</style>
+</head>
+<body>
+
+<div class="hero">
+<h1>OpenHarmony CFI 检测报告</h1>
+<p id="hero-subtitle">加载中...</p>
+<span class="pill">前后端分离架构</span>
+</div>
+
+<div class="container">
+<div class="section">
+<h2>总体结果</h2>
+<div id="stats"><div class="loading"><div class="spinner"></div></div></div>
+<div class="charts-row" id="pies"></div>
+</div>
+<div class="section">
+<h2>模块列表</h2>
+<input type="text" class="search-box" id="searchBox" placeholder="搜索函数名 (至少2个字符)..." oninput="debounceSearch()">
+<div id="searchResults" style="display:none;"></div>
+<div id="modules"><div class="loading"><div class="spinner"></div></div></div>
+</div>
+</div>
+
+<!-- Modal for function detail -->
+<div class="modal-overlay" id="funcModal" onclick="if(event.target===this)closeModal()">
+<div class="modal">
+<div class="modal-resize l"></div><div class="modal-resize r"></div><div class="modal-resize t"></div><div class="modal-resize b"></div><div class="modal-resize tl"></div><div class="modal-resize tr"></div><div class="modal-resize bl"></div><div class="modal-resize br"></div>
+<div class="modal-header">
+<h3 id="modalTitle">函数详情</h3>
+<button class="modal-close" onclick="closeModal()">&times;</button>
+</div>
+<div class="modal-body" id="modalBody"></div>
+</div>
+</div>
+
+<div class="footer"><p>OpenHarmony CFI 检测报告</p></div>
+
+<script src="data.js"></script>
+<script>
+let searchTimer=null;
+const loadedModules=new Set();
+const loadedSoFuncs=new Set();
+const charts=[];
+const API='http://127.0.0.1:5000';
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+async function fetchJSON(u){const c=new AbortController();const t=setTimeout(function(){c.abort()},10000);try{const r=await fetch(u,{signal:c.signal});clearTimeout(t);return r.json()}catch(e){clearTimeout(t);throw e}}
+
+function makeEChart(containerId,pct,label,onClick){
+  const div=document.createElement('div');
+  div.className='chart-box'+(onClick?' clickable':'');div.id=containerId;
+  document.getElementById('pies').appendChild(div);
+  const color=pct>=70?'#059669':(pct>=30?'#2563eb':'#dc2626');
+  const chart=echarts.init(div);
+  chart.setOption({tooltip:{trigger:'item',formatter:label+': {c}%',position:'top'},title:{text:pct+'%',subtext:label,left:'center',top:'center',textStyle:{fontSize:26,fontWeight:'bold',color:color},subtextStyle:{fontSize:12,color:'#64748b'},itemGap:4},series:[{type:'pie',radius:['64%','82%'],center:['50%','50%'],silent:true,label:{show:false},labelLine:{show:false},data:[{value:pct,itemStyle:{color:{type:'radial',x:0.5,y:0.5,r:0.8,colorStops:[{offset:0,color:color},{offset:1,color:color+'cc'}]},borderRadius:8,borderColor:'#fff',borderWidth:3,shadowBlur:10,shadowColor:color+'40'}},{value:100-pct,itemStyle:{color:'#f1f5f9',borderColor:'#fff',borderWidth:2}}],animationType:'scale',animationDuration:600,animationEasing:'cubicOut'}]});
+  charts.push(chart);
+  if(onClick){div.addEventListener('click',onClick);chart.on('click',onClick);}
+}
+
+function makeMiniChart(parent,pct,label,onClick){
+  const id='mc_'+Math.random().toString(36).substr(2,9);
+  const div=document.createElement('div');
+  div.className='mini-chart-box'+(onClick?'':' noclick');
+  div.style.width='150px';div.style.height='170px';div.id=id;
+  parent.appendChild(div);
+  const color=pct>=70?'#059669':(pct>=30?'#2563eb':'#dc2626');
+  const chart=echarts.init(div);
+  chart.setOption({tooltip:{trigger:'item',formatter:label+': {c}%',position:'top'},title:{text:pct+'%',subtext:label,left:'center',top:'center',textStyle:{fontSize:20,fontWeight:'bold',color:color},subtextStyle:{fontSize:11,color:'#64748b'},itemGap:3},series:[{type:'pie',radius:['62%','80%'],center:['50%','50%'],silent:true,label:{show:false},labelLine:{show:false},data:[{value:pct,itemStyle:{color:{type:'radial',x:0.5,y:0.5,r:0.8,colorStops:[{offset:0,color:color},{offset:1,color:color+'cc'}]},borderRadius:6,borderColor:'#fff',borderWidth:2}},{value:100-pct,itemStyle:{color:'#f1f5f9',borderColor:'#fff',borderWidth:2}}],animationType:'scale',animationDuration:500}]});
+  charts.push(chart);
+  if(onClick){div.addEventListener('click',onClick);chart.on('click',onClick);}
+}
+
+window.addEventListener('resize',function(){charts.forEach(function(c){c.resize();})});
+
+function init(){
+  try{
+    if(typeof EMBEDDED_DATA==='undefined')throw new Error('data.js not loaded');
+    var s=EMBEDDED_DATA.summary;
+    var mods=EMBEDDED_DATA.modules;
+    var hs=document.getElementById('hero-subtitle');
+    if(hs)hs.textContent='检测目录 | 共 '+s.total_so+' 个 .so 文件';
+    renderSummary(s);
+    if(s.function_detail!==undefined&&s.function_detail===0){
+      var sb=document.getElementById('searchBox');
+      if(sb)sb.style.display='none';
+    }
+    renderModules(mods);
+  }catch(e){
+    var c=document.querySelector('.container');
+    if(c)c.innerHTML='<div class="section" style="text-align:center;padding:60px;"><h2>数据加载失败: '+e.message+'</h2></div>';
+  }
+}
+
+function renderSummary(s){
+  var soRate=s.total_so>0?Math.round(s.cfi_enabled_so/s.total_so*1000)/10:0;
+  var fd=s.function_detail!==undefined&&s.function_detail!==0;
+  var items=[
+    {n:s.total_so,l:'.so 文件总数',c:'#4f46e5'},
+    {n:s.cfi_enabled_so,l:'CFI 已开启',c:'#059669'},
+    {n:s.cfi_not_enabled_so,l:'CFI 未开启',c:'#dc2626'}
+  ];
+  var groups=[{title:'.so 级',color:'#4f46e5',items:items.slice(0,3)}];
+  if(fd){
+    items.push({n:s.total_cfi_protected_funcs,l:'CFI 保护函数',c:'#059669'},{n:s.total_truly_unprotected,l:'未保护',c:'#dc2626'});
+    groups.push({title:'函数级',color:'#059669',items:items.slice(3)});
+  }
+  if(s.has_vcall){
+    items.push({n:s.total_vcall_cfi,l:'vcall 有CFI',c:'#059669'},{n:s.total_vcall_no_cfi,l:'vcall 无CFI',c:'#dc2626'},{n:s.total_vcall_sites,l:'vcall 调用点',c:'#2563eb'},{n:s.total_vcall_cfi_rate+'%',l:'vcall 保护率',c:'#059669'});
+    groups.push({title:'vcall',color:'#2563eb',items:items.slice(items.length-4)});
+  }
+  if(s.has_icall){
+    items.push({n:s.total_icall_cfi,l:'icall 有CFI',c:'#059669'},{n:s.total_icall_no_cfi,l:'icall 无CFI',c:'#dc2626'},{n:s.total_icall_sites,l:'icall 调用点',c:'#2563eb'},{n:s.total_icall_cfi_rate+'%',l:'icall 保护率',c:'#059669'});
+    groups.push({title:'icall',color:'#2563eb',items:items.slice(items.length-4)});
+  }
+  if(s.aarch64_so>0&&(s.has_pac||s.has_bti)){
+    var pacT=s.total_pac_func_protected+(s.total_pac_func_sign_only||0)+(s.total_pac_func_no_pac||0);
+    var pacR=pacT>0?Math.round(s.total_pac_func_protected/pacT*1000)/10:0;
+    var btiT=(s.total_bti_func_with||0)+(s.total_bti_func_without||0);
+    var btiR=btiT>0?Math.round(s.total_bti_func_with/btiT*1000)/10:0;
+    var pacStart=items.length;
+    if(s.has_pac){
+      items.push({n:s.total_pac_sign_count,l:'PAC签名',c:'#7c3aed'},{n:s.total_pac_auth_count,l:'PAC认证',c:'#7c3aed'},{n:s.total_pac_func_protected,l:'PAC函数保护',c:'#059669'},{n:s.total_pac_func_sign_only,l:'PAC仅签名',c:'#d97706'},{n:s.total_pac_func_no_pac,l:'PAC无保护',c:'#dc2626'},{n:pacR+'%',l:'PAC覆盖率',c:'#059669'});
+      groups.push({title:'PAC',color:'#7c3aed',items:items.slice(pacStart)});
+    }
+    if(s.has_bti){
+      var btiStart=items.length;
+      items.push({n:s.total_bti_count,l:'BTI指令',c:'#f59e0b'},{n:s.total_bti_func_with,l:'BTI函数',c:'#f59e0b'},{n:btiR+'%',l:'BTI覆盖率',c:'#f59e0b'});
+      groups.push({title:'BTI',color:'#f59e0b',items:items.slice(btiStart)});
+    }
+    if(s.has_pac)makeEChart('p5',pacR,'PAC覆盖率');
+    if(s.has_bti)makeEChart('p6',btiR,'BTI覆盖率');
+  }
+  var statsHtml='';
+  for(var g=0;g<groups.length;g++){
+    var grp=groups[g];
+    statsHtml+='<div style="width:100%;margin:8px 0 4px;font-weight:700;color:'+grp.color+';font-size:.9rem;">'+grp.title+'</div>';
+    statsHtml+='<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;">';
+    for(var si=0;si<grp.items.length;si++){var it=grp.items[si];statsHtml+='<div class="stat" style="min-width:90px;flex-shrink:0"><div class="num" style="color:'+it.c+'">'+it.n+'</div><div class="lbl">'+it.l+'</div></div>';}
+    statsHtml+='</div>';
+  }
+  document.getElementById('stats').innerHTML=statsHtml;
+  makeEChart('p1',soRate,'.so CFI覆盖率');
+  if(fd){
+    var ft=s.total_cfi_protected_funcs+s.total_truly_unprotected;
+    var fr=ft>0?Math.round(s.total_cfi_protected_funcs/ft*1000)/10:0;
+    makeEChart('p2',fr,'函数保护率');
+  }
+  if(s.has_vcall)makeEChart('p3',s.total_vcall_cfi_rate,'vcall保护率');
+  if(s.has_icall)makeEChart('p4',s.total_icall_cfi_rate,'icall保护率');
+}
+
+function badgeForRate(r){
+  if(r===100)return '<span class="badge green">100%</span>';
+  if(r>=70)return '<span class="badge blue">'+r+'%</span>';
+  if(r>=30)return '<span class="badge orange">'+r+'%</span>';
+  if(r>0)return '<span class="badge red">'+r+'%</span>';
+  return '<span class="badge dark">0%</span>';
+}
+
+function renderModules(mods){
+  var hs=typeof EMBEDDED_DATA!=='undefined'?EMBEDDED_DATA.summary:{};
+  var fd=hs.function_detail!==undefined&&hs.function_detail!==0;
+  document.getElementById('modules').innerHTML=mods.map(function(m){
+    var funcStats=fd?'<span>保护:'+m.cfi_protected_count+'</span><span class="red">未保护:'+m.truly_unprotected_count+'</span>'+badgeForRate(m.cfi_rate_percent):'';
+    return '<div class="module-block"><div class="module-head" onclick="toggleModule(\''+m.module+'\')"><h3>'+m.module+' <small>'+m.desc+'</small></h3><div class="mod-stats"><span>.so: '+m.total_so+'</span><span class="badge green">CFI:'+m.cfi_enabled_so+'</span><span class="badge red">无CFI:'+m.cfi_not_enabled_so+'</span>'+funcStats+'</div></div><div id="content_'+m.module+'" class="module-content"></div></div>';
+  }).join('');
+}
+
+async function toggleModule(module){
+  var el=document.getElementById('content_'+module);
+  if(el.style.display==='none'||el.style.display===''){
+    el.style.display='block';
+    if(!loadedModules.has(module)){
+      el.innerHTML='<div class="loading"><div class="spinner"></div></div>';
+      try{
+        var data=null;
+        if(typeof EMBEDDED_DATA!=='undefined'){var mod=EMBEDDED_DATA.modules.find(function(m){return m.module===module;});if(mod)data={module:mod,so_files:mod.so_files||[]};}
+        if(!data){try{data=await fetchJSON(API+'/api/modules/'+module);}catch(e){el.innerHTML='<div class="empty">需后端服务</div>';return;}}
+        renderModuleContent(module,data);
+        loadedModules.add(module);
+      }catch(e){el.innerHTML='<div class="empty">加载失败</div>';}
+    }
+  }else{el.style.display='none';}
+}
+
+function renderModuleContent(module,data){
+  var m=data.module;
+  var el=document.getElementById('content_'+module);
+  var hs=typeof EMBEDDED_DATA!=='undefined'?EMBEDDED_DATA.summary:{};
+  var fd=hs.function_detail!==undefined&&hs.function_detail!==0;
+  var ch='<div class="mini-charts" id="mc_'+module+'"></div>';
+  var soHtml=data.so_files.map(function(so){
+    var sp=so.path.replace(/'/g,"\\'");
+    var onclickStr=fd?('toggleSo('+(so.id||0)+',\''+sp+'\')'):'';
+    var pacBt='';
+    if(fd&&hs.has_pac&&so.pac_func_protected!==undefined){pacBt+='<span class="badge" style="background:#f3e8ff;color:#6b21a8;">PAC '+(so.pac_func_protected||0)+'</span>';}
+    if(fd&&hs.has_bti){pacBt+='<span class="badge" style="background:#fef3c7;color:#92400e;">BTI '+(so.bti_func_with||0)+'</span>';}
+    var badge=fd?(so.cfi_enabled?'<span class="badge green">CFI '+(so.cfi_protected_count||0)+'</span><span class="badge red">NO CFI '+(so.truly_unprotected_count||0)+'</span>':'<span class="badge dark">NO CFI</span>'):(so.cfi_enabled?'<span class="badge green">CFI</span>':'<span class="badge dark">NO CFI</span>');
+    var onclickAttr=onclickStr?(' onclick="'+onclickStr+'"'):'';
+    return '<div class="so-section"><div class="so-header'+(so.cfi_enabled?'':' no-cfi')+'"'+onclickAttr+'><span class="so-path">'+so.path+'</span><span class="so-stats">'+badge+pacBt+'</span></div>'+(fd?'<div id="so_'+(so.id||0)+'" class="so-detail"></div>':'')+'</div>';
+  }).join('');
+  el.innerHTML=ch+soHtml;
+  makeMiniChart(document.getElementById('mc_'+module),m.cfi_rate_percent,'.so覆盖率');
+  if(!fd)return;
+  if(hs.has_vcall)makeMiniChart(document.getElementById('mc_'+module),m.vcall_cfi_rate,'vcall');
+  if(hs.has_icall)makeMiniChart(document.getElementById('mc_'+module),m.icall_cfi_rate,'icall');
+  if(hs.has_pac){
+    var mpT=m.pac_func_protected+(m.pac_func_sign_only||0)+(m.pac_func_no_pac||0);
+    var mpR=mpT>0?Math.round(m.pac_func_protected/mpT*1000)/10:0;
+    makeMiniChart(document.getElementById('mc_'+module),mpR,'PAC');
+  }
+  if(hs.has_bti){
+    var mbT=(m.bti_func_with||0)+(m.bti_func_without||0);
+    var mbR=mbT>0?Math.round(m.bti_func_with/mbT*1000)/10:0;
+    makeMiniChart(document.getElementById('mc_'+module),mbR,'BTI');
+  }
+  var ft=(m.cfi_protected_count||0)+(m.truly_unprotected_count||0);
+  var fr=ft>0?Math.round((m.cfi_protected_count||0)/ft*1000)/10:0;
+  makeMiniChart(document.getElementById('mc_'+module),fr,'函数');
+}
+
+async function toggleSo(soId,path){
+  var el=document.getElementById('so_'+soId);
+  if(!el){var secs=document.querySelectorAll('.so-detail');for(var i=0;i<secs.length;i++){var prev=secs[i].previousElementSibling;if(prev){var pEl=prev.querySelector('.so-path');if(pEl&&pEl.textContent===path){el=secs[i];break;}}}}
+  if(!el)return;
+  if(el.style.display==='none'||el.style.display===''){
+    el.style.display='block';
+    if(!loadedSoFuncs.has(soId)){
+      el.innerHTML='<div class="loading"><div class="spinner"></div></div>';
+      // Find so data from embedded
+      var soData=null;
+      if(typeof EMBEDDED_DATA!=='undefined'){
+        for(var mi=0;mi<EMBEDDED_DATA.modules.length;mi++){
+          var mfiles=EMBEDDED_DATA.modules[mi].so_files||[];
+          for(var si=0;si<mfiles.length;si++){if(mfiles[si].path===path){soData=mfiles[si];break;}}
+          if(soData)break;
+        }
+      }
+      if(soData){
+        var hs2=typeof EMBEDDED_DATA!=='undefined'?EMBEDDED_DATA.summary:{};
+        if(!hs2.function_detail||hs2.function_detail===0){
+          loadedSoFuncs.add(soId);
+          return;
+        }
+        var ch='<div class="mini-charts">';
+        el.innerHTML=ch;
+        var mcParent=el.querySelector('.mini-charts');
+        // Function chart (clickable → modal)
+        var ft2=(soData.cfi_protected_count||0)+(soData.truly_unprotected_count||0);
+        var fr2=ft2>0?Math.round((soData.cfi_protected_count||0)/ft2*1000)/10:0;
+        makeMiniChart(mcParent,fr2,'函数',function(){openFuncModal(soId,path,'function',soData);});
+        // PAC chart (clickable → modal)
+        if(hs2.has_pac){
+          var ppT=soData.pac_func_protected+(soData.pac_func_sign_only||0)+(soData.pac_func_no_pac||0);
+          var ppR=ppT>0?Math.round(soData.pac_func_protected/ppT*1000)/10:0;
+          makeMiniChart(mcParent,ppR,'PAC',function(){openFuncModal(soId,path,'pac',soData);});
+        }
+        // BTI chart (clickable → modal)
+        if(hs2.has_bti){
+          var pbT=(soData.bti_func_with||0)+(soData.bti_func_without||0);
+          var pbR=pbT>0?Math.round(soData.bti_func_with/pbT*1000)/10:0;
+          makeMiniChart(mcParent,pbR,'BTI',function(){openFuncModal(soId,path,'bti',soData);});
+        }
+        // vcall/icall (not clickable)
+        if(hs2.has_vcall)makeMiniChart(mcParent,soData.vcall_cfi_rate||0,'vcall');
+        if(hs2.has_icall)makeMiniChart(mcParent,soData.icall_cfi_rate||0,'icall');
+        loadedSoFuncs.add(soId);
+      }else{
+        el.innerHTML='<div class="empty">数据未找到</div>';
+      }
+    }
+  }else{el.style.display='none';}
+}
+
+// Modal: open function detail by category
+async function openFuncModal(soId,path,type,soData){
+  var modal=document.getElementById('funcModal');
+  var title=document.getElementById('modalTitle');
+  var body=document.getElementById('modalBody');
+  var shortName=path.split('/').pop();
+  title.textContent=shortName+' — '+type.toUpperCase()+' 函数详情';
+  body.innerHTML='<div class="loading"><div class="spinner"></div></div>';
+  modal.classList.add('active');
+
+  var sections=[];
+  if(type==='function'){
+    sections=[{label:'CFI 保护函数',type:'protected',color:'green',count:soData.cfi_protected_count||0},{label:'未保护函数',type:'unprotected',color:'red',count:soData.truly_unprotected_count||0},{label:'CFI 基础设施函数',type:'infra',color:'infra',count:soData.cfi_infra_count||0}];
+  }else if(type==='pac'){
+    sections=[{label:'PAC 保护函数',type:'pac_protected',color:'green',count:soData.pac_func_protected||0},{label:'PAC 仅签名函数',type:'pac_sign_only',color:'orange',count:soData.pac_func_sign_only||0},{label:'无 PAC 函数',type:'pac_no_pac',color:'red',count:soData.pac_func_no_pac||0}];
+  }else if(type==='bti'){
+    sections=[{label:'有 BTI 函数',type:'bti_with',color:'green',count:soData.bti_func_with||0},{label:'无 BTI 函数',type:'bti_without',color:'red',count:soData.bti_func_without||0}];
+  }
+
+  var html='';
+  for(var i=0;i<sections.length;i++){
+    var sec=sections[i];
+    html+='<div class="func-section '+sec.color+'"><h4 id="hdr_'+sec.type+'">'+sec.label+'</h4>';
+    html+='<table class="func-table"><thead><tr><th>#</th><th>函数名</th></tr></thead><tbody id="tbl_'+sec.type+'"><tr><td colspan="2" class="loading"><div class="spinner" style="width:18px;height:18px;"></div></td></tr></tbody></table></div>';
+  }
+  body.innerHTML=html;
+
+  // Load function lists from API — update count with actual returned length
+  for(var j=0;j<sections.length;j++){
+    var sec2=sections[j];
+    var tbl=document.getElementById('tbl_'+sec2.type);
+    var hdr=document.getElementById('hdr_'+sec2.type);
+    try{
+      var funcs=await fetchJSON(API+'/api/so_files/'+soId+'/functions?type='+sec2.type);
+      var mangledTotal=0;for(var ki=0;ki<funcs.length;ki++){mangledTotal+=(funcs[ki].mangled_count||1);}
+      hdr.textContent=sec2.label+' ('+mangledTotal+' 个)';
+      if(funcs.length===0){tbl.innerHTML='<tr><td colspan="2" class="empty">无</td></tr>';continue;}
+      var rows=funcs.map(function(f,i){
+        var mc=f.mangled_count||1;
+        var marker=mc>1?' <span style="background:#f59e0b;color:#fff;border-radius:4px;padding:1px 6px;font-size:.75rem;font-weight:700;vertical-align:middle;" title="'+mc+' 个 mangled 符号名 demangle 后相同">'+mc+'×</span>':'';
+        return '<tr><td>'+(i+1)+'</td><td class="mono">'+esc(f.name)+marker+'</td></tr>';
+      }).join('');
+      tbl.innerHTML=rows;
+    }catch(e){
+      hdr.textContent=sec2.label+' ('+sec2.count+' 个)';
+      tbl.innerHTML='<tr><td colspan="2" class="empty">需后端服务运行查看函数名</td></tr>';
+    }
+  }
+}
+
+function closeModal(){document.getElementById('funcModal').classList.remove('active');}
+
+function debounceSearch(){clearTimeout(searchTimer);searchTimer=setTimeout(doSearch,300);}
+async function doSearch(){
+  var q=document.getElementById('searchBox').value.trim();
+  var el=document.getElementById('searchResults');
+  if(q.length<2){el.style.display='none';return;}
+  el.style.display='block';el.className='search-results';
+  el.innerHTML='<div class="loading"><div class="spinner" style="width:18px;height:18px;"></div></div>';
+  try{
+    var r=await fetchJSON(API+'/api/search?q='+encodeURIComponent(q));
+    el.innerHTML=r.length===0?'<div class="search-result-item empty">无匹配结果</div>':r.map(function(x){
+      var nm=esc(x.name).replace(/'/g,"\\'");
+      if(x.path){var sm=x.module.replace(/'/g,"\\'"),sp=x.path.replace(/'/g,"\\'");return '<div class="search-result-item" onclick="jumpTo(\''+sm+'\',\''+sp+'\')"><span class="mono">'+esc(x.name)+'</span><span style="color:#64748b;"> ('+x.path+') ['+x.func_type+']</span></div>';}
+      return '<div class="search-result-item" style="cursor:pointer;" onclick="showFuncLocations(\''+nm+'\')"><span class="mono">'+esc(x.name)+'</span><span style="color:#94a3b8;font-size:.72rem;"> 点击查看出现位置</span></div>';
+    }).join('');
+  }catch(e){el.innerHTML='<div class="search-result-item empty">搜索失败</div>';}
+}
+
+async function showFuncLocations(name){
+  var modal=document.getElementById('funcModal');
+  var title=document.getElementById('modalTitle');
+  var body=document.getElementById('modalBody');
+  title.textContent=name+' — 出现位置';
+  body.innerHTML='<div class="loading"><div class="spinner"></div></div>';
+  modal.classList.add('active');
+  try{
+    var r=await fetchJSON(API+'/api/function_locations?name='+encodeURIComponent(name));
+    if(r.length===0){body.innerHTML='<div class="empty">未找到该函数的出现位置</div>';return;}
+    var dimMap={'protected':{cfi:['保护','green',3]},'unprotected':{cfi:['未保护','red',1]},'infra':{cfi:['基础设施','dark',2]},'pac_protected':{pac:['有','green',3]},'pac_sign_only':{pac:['仅签名','orange',2]},'pac_no_pac':{pac:['无','red',1]},'bti_with':{bti:['有','green',2]},'bti_without':{bti:['无','red',1]}};
+    var hs3=typeof EMBEDDED_DATA!=='undefined'?EMBEDDED_DATA.summary:{};
+    var hasCFI=true,hasPAC=hs3.has_pac||false,hasBTI=hs3.has_bti||false;
+    var pathMap={};
+    for(var i=0;i<r.length;i++){
+      var x=r[i];
+      var ft=x.func_type;
+      if(!pathMap[x.path]){pathMap[x.path]={path:x.path,module:x.module,cfi:null,pac:null,bti:null};}
+      var dm=dimMap[ft]||{};
+      if(dm.cfi&&(!pathMap[x.path].cfi||dm.cfi[2]>pathMap[x.path].cfi[2]))pathMap[x.path].cfi=dm.cfi;
+      if(hasPAC&&dm.pac&&(!pathMap[x.path].pac||dm.pac[2]>pathMap[x.path].pac[2]))pathMap[x.path].pac=dm.pac;
+      if(hasBTI&&dm.bti&&(!pathMap[x.path].bti||dm.bti[2]>pathMap[x.path].bti[2]))pathMap[x.path].bti=dm.bti;
+    }
+    var grouped=Object.values(pathMap);
+    function dimBadge(d){return d?'<span class="badge '+d[1]+'">'+d[0]+'</span>':'<span class="badge red">无</span>';}
+    var cols=[];
+    var keys=[];
+    if(hasCFI){cols.push('CFI');keys.push('cfi');}
+    if(hasPAC){cols.push('PAC');keys.push('pac');}
+    if(hasBTI){cols.push('BTI');keys.push('bti');}
+    var html='<div style="margin-bottom:12px;color:#475569;font-size:.85rem;">共出现在 '+grouped.length+' 个 .so 中：</div>';
+    var th='<th>#</th><th>.so 路径</th><th>模块</th>';for(var c=0;c<cols.length;c++)th+='<th>'+cols[c]+'</th>';
+    html+='<table class="func-table"><thead><tr>'+th+'</tr></thead><tbody>';
+    for(var i=0;i<grouped.length;i++){
+      var g=grouped[i];
+      var td='<td>'+(i+1)+'</td><td class="mono">'+esc(g.path)+'</td><td>'+esc(g.module)+'</td>';
+      for(var c=0;c<keys.length;c++){td+='<td>'+dimBadge(g[keys[c]])+'</td>';}
+      html+='<tr>'+td+'</tr>';
+    }
+    html+='</tbody></table>';
+    body.innerHTML=html;
+  }catch(e){
+    body.innerHTML='<div class="empty">需后端服务运行查看详情</div>';
+  }
+}
+
+function jumpTo(module,path){
+  toggleModule(module);
+  setTimeout(function(){var c=document.getElementById('content_'+module);var hs=c.querySelectorAll('.so-header');for(var i=0;i<hs.length;i++){if(hs[i].querySelector('.so-path').textContent===path){hs[i].click();hs[i].scrollIntoView({behavior:'smooth',block:'center'});break;}}},600);
+}
+
+// Modal drag by header + resize from all 8 edges
+(function(){
+  var drag=null;
+  document.addEventListener('mousedown',function(e){
+    var hdr=e.target.closest('.modal-header');
+    if(hdr&&!e.target.closest('.modal-close')){
+      var modal=hdr.parentElement;
+      var rect=modal.getBoundingClientRect();
+      drag={el:modal,type:'move',sx:e.clientX,sy:e.clientY,ox:rect.left,oy:rect.top,w:rect.width,h:rect.height};
+      modal.style.position='fixed';
+      modal.style.left=rect.left+'px';
+      modal.style.top=rect.top+'px';
+      modal.style.margin='0';
+      e.preventDefault();
+      return;
+    }
+    var rz=e.target.closest('.modal-resize');
+    if(rz){
+      var modal2=rz.parentElement;
+      var rect2=modal2.getBoundingClientRect();
+      drag={el:modal2,type:rz.className.split(' ')[1],sx:e.clientX,sy:e.clientY,ox:rect2.left,oy:rect2.top,w:rect2.width,h:rect2.height};
+      modal2.style.position='fixed';
+      modal2.style.left=rect2.left+'px';
+      modal2.style.top=rect2.top+'px';
+      modal2.style.margin='0';
+      e.preventDefault();
+    }
+  });
+  document.addEventListener('mousemove',function(e){
+    if(!drag)return;
+    var dx=e.clientX-drag.sx;
+    var dy=e.clientY-drag.sy;
+    var minW=400,minH=200;
+    if(drag.type==='move'){
+      drag.el.style.left=(drag.ox+dx)+'px';
+      drag.el.style.top=Math.max(0,drag.oy+dy)+'px';
+    }else{
+      var nx=drag.ox,ny=drag.oy,nw=drag.w,nh=drag.h;
+      if(drag.type.indexOf('r')>=0)nw=Math.max(minW,drag.w+dx);
+      if(drag.type.indexOf('b')>=0)nh=Math.max(minH,drag.h+dy);
+      if(drag.type.indexOf('l')>=0){nw=Math.max(minW,drag.w-dx);nx=drag.ox+(drag.w-nw);}
+      if(drag.type.indexOf('t')>=0){nh=Math.max(minH,drag.h-dy);ny=drag.oy+(drag.h-nh);}
+      drag.el.style.left=nx+'px';
+      drag.el.style.top=ny+'px';
+      drag.el.style.width=nw+'px';
+      drag.el.style.height=nh+'px';
+      drag.el.style.maxHeight='none';
+    }
+  });
+  document.addEventListener('mouseup',function(){drag=null;});
+})();
+
+init();
+</script>
+</body>
+</html>
