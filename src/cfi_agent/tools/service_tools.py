@@ -144,6 +144,10 @@ def register_service_tools(reg):
         t_propose_plan,
     )
 
+    _HIGH_RISK_MODULES = {'security', 'account', 'tee', 'useriam'}
+    _MED_RISK_MODULES = {'arkui', 'arkcompiler', 'communication', 'multimedia', 'distributeddatamgr', 'bundlemanager', 'graphic', 'hdf', 'startup', 'powermgr', 'notification', 'inputmethod'}
+    _LOW_RISK_MODULES = {'thirdparty', 'xts', 'testfwk', 'build'}
+
     def t_reflect_check(summary):
         checks = []
         def add(name, status, detail=''):
@@ -169,13 +173,54 @@ def register_service_tools(reg):
         else:
             add('有函数数据', '需关注', '保护+未保护=0，可能未做函数级检测')
         abnormal = [c for c in checks if c['status'] in ('异常', '需关注')]
+
+        risks = []
+        def add_risk(level, module, so_path, risk, recommendation):
+            risks.append({'level': level, 'module': module, 'so': so_path, 'risk': risk, 'recommendation': recommendation})
+
+        aarch = summary.get('aarch64_so', 0)
+        cfi_rate = round(on / ts * 100, 1) if ts > 0 else 0
+        if cfi_rate < 30:
+            add_risk('高', '全局', '-', f'整体 CFI 覆盖率仅 {cfi_rate}%（{on}/{ts}），大量 .so 无前向 CFI 防护', '优先对安全敏感模块开启 CFI')
+
+        pac_total = summary.get('total_pac_func_protected', 0) + summary.get('total_pac_func_sign_only', 0) + summary.get('total_pac_func_no_pac', 0)
+        if aarch > 0 and pac_total > 0:
+            pac_rate = round(summary.get('total_pac_func_protected', 0) / pac_total * 100, 1)
+            sign_only = summary.get('total_pac_func_sign_only', 0)
+            if pac_rate < 30:
+                add_risk('高', '-', '-', f'PAC 覆盖率仅 {pac_rate}%（{aarch} 个 AArch64 .so），ROP 防护薄弱', '提高 PAC 编译覆盖率')
+            if sign_only > 0 and sign_only / max(pac_total, 1) > 0.3:
+                add_risk('中', '-', '-', f'PAC sign_only 比例 {round(sign_only/pac_total*100,1)}%（签名未验证），签名无效', '修复 sign_only 函数，确保签名后有认证')
+            bti_total = summary.get('total_bti_func_with', 0) + summary.get('total_bti_func_without', 0)
+            if bti_total > 0:
+                bti_rate = round(summary.get('total_bti_func_with', 0) / bti_total * 100, 1)
+                if bti_rate < 10:
+                    add_risk('高', '-', '-', f'BTI 覆盖率仅 {bti_rate}%，JOP 防护薄弱', '提高 BTI 编译覆盖率')
+
+        if vs > 1000 and summary.get('total_vcall_cfi_rate', 0) < 30:
+            add_risk('中', '-', '-', f'vcall 调用点 {vs} 个，CFI 覆盖率仅 {summary.get("total_vcall_cfi_rate", 0)}%，虚表劫持风险', '提高虚函数调用 CFI 覆盖率')
+        if ics > 100 and summary.get('total_icall_cfi_rate', 0) < 30:
+            add_risk('中', '-', '-', f'icall 调用点 {ics} 个，CFI 覆盖率仅 {summary.get("total_icall_cfi_rate", 0)}%，间接调用劫持风险', '提高间接调用 CFI 覆盖率')
+
+        so_rate = round(on / ts * 100, 1) if ts > 0 else 0
+        if so_rate < 50:
+            add_risk('中', '-', '-', f'.so CFI 覆盖率 {so_rate}%，超过半数 .so 无 CFI', '扩大 CFI 编译覆盖范围')
+
+        high_risks = [r for r in risks if r['level'] == '高']
+        med_risks = [r for r in risks if r['level'] == '中']
+        risk_overall = '高风险' if high_risks else ('中风险' if med_risks else '低风险')
+
         return {'overall': '有异常需关注' if abnormal else '全部正常',
-                'abnormal_count': len(abnormal), 'checks': checks}
+                'abnormal_count': len(abnormal), 'checks': checks,
+                'risk_level': risk_overall,
+                'risk_count': {'高': len(high_risks), '中': len(med_risks)},
+                'risk_assessment': risks}
 
     reg.add(
         'reflect_check',
-        '反思自检：对检测返回的 summary 做合理性校验（so总数一致性、保护率范围、有调用点却无保护等）。'
-        '完整检测后调用此工具自检结果质量，发现异常向用户提示。',
+        '反思自检 + 风险评估：对检测结果做合理性校验，并基于安全知识库给出风险评估（高/中/低）。'
+        '检查 .so 总数一致性、保护率范围、PAC/BTI 覆盖率、vcall/icall 保护率等。'
+        '完整检测后调用此工具获取安全建议，向用户提示哪些模块需要优先修复。',
         {
             'type': 'object',
             'properties': {

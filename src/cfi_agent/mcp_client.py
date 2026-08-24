@@ -88,10 +88,27 @@ class MCPClient:
         self._thread.join(timeout=5)
 
 
+def _check_mcp_available():
+    global _MCP_AVAILABLE, ClientSession, StdioServerParameters, stdio_client
+    if _MCP_AVAILABLE:
+        return True
+    import sys
+    for k in list(sys.modules.keys()):
+        if k == 'mcp' or k.startswith('mcp.'):
+            del sys.modules[k]
+    try:
+        from mcp import ClientSession as _CS, StdioServerParameters as _SP
+        from mcp.client.stdio import stdio_client as _SC
+        ClientSession, StdioServerParameters, stdio_client = _CS, _SP, _SC
+        _MCP_AVAILABLE = True
+        return True
+    except Exception:
+        return False
+
+
 def create_sqlite_client(db_path, python_exe=None) -> Optional[MCPClient]:
     import sys
-    if not _MCP_AVAILABLE:
-        print("MCP SDK 未安装，跳过 sqlite MCP 连接（agent 仍可用本地查询工具）")
+    if not _check_mcp_available():
         return None
     command = python_exe or sys.executable
     args = ["-m", "cfi_agent.mcp_servers.sqlite_server", "--db", db_path]

@@ -186,6 +186,24 @@ def register_detect_tools(reg):
             lib_dir = lib_dir or reg.defaults.get('lib_dir')
             if not lib_dir:
                 return "错误：未提供 lib_dir"
+
+            if dim_name in ('pac', 'bti'):
+                from ..engine.detection import _iter_so, ensure_pyelftools as _ensure_elf
+                _ELFFile = _ensure_elf()
+                so_files = _iter_so(lib_dir)
+                has_aarch64 = False
+                for so_file in so_files[:50]:
+                    try:
+                        with open(str(so_file), 'rb') as f:
+                            elf = _ELFFile(f)
+                            if elf.get_machine_arch() == 'AArch64':
+                                has_aarch64 = True
+                                break
+                    except Exception:
+                        continue
+                if not has_aarch64:
+                    return f"提示：{dim_label_zh} 是 AArch64（ARM64）架构专属特性，当前 .so 集合为 32 位 ARM Thumb 架构，{dim_label_zh} 检测不适用。建议改用 detect_so_level / detect_functions / detect_vcall / detect_icall。"
+
             output_dir = _auto_output_dir(dim_name, output_dir or reg.defaults.get('output_dir'))
             reg.last_output_dir = output_dir
             base_output_dir = os.path.dirname(output_dir)

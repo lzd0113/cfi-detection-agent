@@ -1,68 +1,103 @@
 ---
 name: cfi-detection
-description: Use when the user wants to detect CFI (Control-Flow Integrity) on OpenHarmony .so libraries, ask about CFI coverage, protected/unprotected functions, vcall/icall, or query CFI detection results. 触发关键词：CFI 检测、控制流完整性、.so、虚函数调用、间接调用、未保护函数、保护率、检测报告。
+description: Use when the user wants to detect CFI/PAC/BTI on OpenHarmony .so libraries, query detection results, search functions, or analyze security risks. 触发关键词：CFI 检测、控制流完整性、PAC、BTI、虚函数调用、间接调用、未保护函数、保护率、检测报告、ROP、JOP、安全风险。
 ---
 
 # OpenHarmony CFI 安全检测领域知识
 
-## CFI 是什么
+## 检测的三大安全特性
 
-CFI（Control-Flow Integrity，控制流完整性）是 LLVM 编译期安全插桩：为每个需要保护的函数生成 `func.cfi`（含类型检查的插桩版本）与 `func`（原始函数体）。所有间接调用指向 `.cfi` 版本。运行时通过 `__cfi_slowpath` 校验目标类型，阻断控制流劫持。
+### 前向 CFI（LLVM CFI）
+LLVM 编译期安全插桩：为每个需要保护的函数生成 `func.cfi`（含类型检查的插桩版本）与 `func`（原始函数体）。间接调用通过 `__cfi_slowpath` 校验目标类型，阻断控制流劫持。防护 vtable hijacking、type confusion、间接调用劫持。
 
-## 检测三个维度
+### 后向 CFI（PAC）
+ARMv8.3 指针认证：函数入口用 PACIBSP 签名返回地址，函数返回用 AUTIBSP/RETAA 验证。防护 ROP（返回地址篡改）。仅 AArch64。
 
-- **.so 级**：是否开启 CFI（存在已定义的 `__cfi_check` 符号，`st_value != 0`）
-- **函数级**：`func.cfi` → 受保护；`__cfi*`/`.L.cfi*` → CFI 基础设施；只有原始体无 `.cfi` 版本 → 真正未保护
-- **调用点级**：vcall（虚函数调用，间接调用前有 LDR 加载 vtable 指针）；icall（非 vtable 间接调用）。调用点 ±48 字节内有 `__cfi_slowpath` 调用 → 有 CFI 保护。自动识别架构：ARM 32-bit Thumb（BLX Rn + 20 字节 LDR 窗口）或 AArch64（BLR Xn + 48 字节 LDR 窗口）
+### 前向 CFI（BTI）
+ARMv8.5 分支目标标识：函数入口插入 BTI 指令，间接跳转到非 BTI 地址触发异常。防护 JOP（跳转劫持）。仅 AArch64。
 
-## 10 个 Skill（已封装为 Agent 工具，无需手写算法）
+## 5 个检测维度
 
-1. .so 级检测（查 `__cfi_check`） 2. 函数级分类 3. vcall 检测 4. icall 检测
-5. 函数名 demangle（c++filt 批量，50000/批） 6. SQLite 生成（5 表 3 索引）
-7. Flask REST API（端口 5000，CORS 全开） 8. HTML 前端（ECharts 饼图 + fetch 懒加载）
-9. Excel 报告（4 Sheet，分组折叠，条件着色） 10. 后台启动服务 + .bat
+| 维度 | 工具 | 内容 |
+|------|------|------|
+| .so 级 | check_cfi_enabled | 检查 `__cfi_check` 符号是否定义 |
+| 函数级 | classify_functions | func.cfi→受保护; __cfi*→基础设施; 无.cfi→未保护 |
+| 调用点 | scan_call_sites | vcall(虚函数)/icall(间接调用) + ±48字节 slowpath CFI 判定 |
+| PAC | analyze_pac_bti | 函数级 PACIASP/AUTIBSP 分类: protected/sign_only/no_pac |
+| BTI | analyze_pac_bti | 函数入口 BTI 指令覆盖率 |
+
+## 7 种检测模式（均已并行化）
+
+| 模式 | 工具 | 包含维度 | 耗时(v6.1, 2953.so) |
+|------|------|---------|---------------------|
+| 完整检测 | run_cfi_detection | 全部 | ~2 分钟 |
+| .so 级 | detect_so_level | 仅 CFI 开关 | ~26 秒 |
+| 函数级 | detect_functions | .so+函数 | ~1.5 分钟 |
+| vcall | detect_vcall | .so+函数+vcall | ~1.5 分钟 |
+| icall | detect_icall | .so+函数+icall | ~1.5 分钟 |
+| PAC | detect_pac | .so+函数+PAC | ~2 分钟 |
+| BTI | detect_bti | .so+函数+BTI | ~2 分钟 |
+
+32 位 ARM (v4.1) 的 PAC/BTI 检测会自动跳过（ARMv8.5-A 专属）。
+
+## 21 个 Agent 工具
+
+### 检测工具（7 个）
+run_cfi_detection, detect_so_level, detect_functions, detect_vcall, detect_icall, detect_pac, detect_bti
+
+### 查询工具（6 个）
+query_summary, query_no_cfi_so, query_functions, search_functions, query_modules, query_sql
+
+### 服务/元工具（8 个）
+regenerate_report, start_report_service, stop_report_service, propose_plan, reflect_check, list_history, compare_changes, generate_changes_excel
 
 ## 工具使用指引
 
-- 用户要"完整检测 + 生成全套报告" → `run_cfi_detection`（lib_dir + mode=full/fast）。full≈3分钟产出 SQLite/HTML/Excel，fast≈1分钟仅 .so 级
-- 用户只要"快速看哪些 .so 没开 CFI" → `detect_so_level`（仅 Skill 1，最快，不生成报告，只返回统计）
-- 用户问"函数保护率 / 哪些函数没保护" → `detect_functions`（Skill 2，只出统计）
-- 用户问"vcall 保护率" → `detect_vcall`（Skill 3，只出统计）
-- 用户问"icall 保护率" → `detect_icall`（Skill 4，只出统计）
-- 用户问"哪些没开 CFI"（已有检测结果库时）→ `query_no_cfi_so`（按 module 过滤，读 SQLite）
-- 用户问"某函数受没受保护/搜函数" → `search_functions`（关键词≥2字符）
-- 用户要"重新生成报告页面" → `regenerate_report`（html/app）
-- 用户要"直接 SQL 查库" → MCP 工具 `mcp_list_tables`/`mcp_describe_table`/`mcp_query`
-- 用户要"启动/停止报告服务" → `start_report_service`/`stop_report_service`
-- 用户问"总体怎么样" → `query_summary` 或 `query_modules`
-- 用户要"对比两次检测/看哪些 .so 开了 CFI 变化" → 先 `list_history` 看历史存档，再 `compare_changes(version_a=存档名)` 对比当前（结果存 changes 表），最后 `generate_changes_excel` 生成变化对照 Excel（开启CFI 绿/关闭CFI 红）
-- 用户要"自检检测结果合理性" → `reflect_check`（对 summary 做字段一致性/保护率范围校验）
+- 用户要"完整检测 + 全套报告" → `run_cfi_detection`（lib_dir, mode=full）
+- 用户只要"快速看哪些 .so 没开 CFI" → `detect_so_level`（最快，不生成报告）
+- 用户问"函数保护率" → `detect_functions`
+- 用户问"vcall/icall/PAC/BTI 保护率" → 对应 `detect_vcall/icall/pac/bti`
+- 已有检测结果时查询 → `query_summary`/`query_modules`/`query_no_cfi_so`/`search_functions`/`query_sql`
+- 用户要"搜某函数受没受保护" → `search_functions`（关键词≥2字符，点击可看出现在哪些 .so 中）
+- 用户要"对比两次检测变化" → `list_history` → `compare_changes` → `generate_changes_excel`
+- 检测后自动调用 `reflect_check` 获取风险评估
+- 用户要"重新生成报告" → `regenerate_report`（html/app）
+- 用户要"启动/停止服务" → `start_report_service`/`stop_report_service`
+
+## reflect_check 风险评估
+
+检测后调用 `reflect_check` 自动评估安全风险：
+- CFI 覆盖率 < 30% → 高风险
+- PAC 覆盖率 < 30% → 高风险（ROP 防护薄弱）
+- BTI 覆盖率 < 10% → 高风险（JOP 防护薄弱）
+- vcall 调用点 > 1000 且 CFI 覆盖率 < 30% → 中风险（虚表劫持）
+- icall 调用点 > 100 且 CFI 覆盖率 < 30% → 中风险（间接调用劫持）
+- PAC sign_only 比例 > 30% → 中风险（签名未验证）
+- .so CFI 覆盖率 < 50% → 中风险
+
+返回 risk_level（高/中/低）、risk_count、risk_assessment（具体风险项 + 修复建议）。
 
 ## 关键技术参数
 
-- 支持指令集：ARM 32-bit Thumb（小端序半字）+ AArch64（32 位定长，自动检测 `elf.get_machine_arch()`）
-- vcall LDR 扫描窗口：Thumb=BLX 前 20 字节（10 半字）；AArch64=BLR 前 48 字节（12 条指令）
-- CFI 保护判定窗口：调用点 ±48 字节
-- slowpath PLT 偏移：`.plt + 32 + index × 16`（两种架构相同）
-- 重定位表：Thumb 用 `.rel.plt`，AArch64 用 `.rela.plt`（均已支持）
-- 输入必须用 `lib.unstripped/`（strip 后 `__cfi_check` 会丢失）
+- 指令集：ARM 32-bit Thumb（BLX + LDR 窗口 20 字节）+ AArch64（BLR + LDR 窗口 48 字节）
+- CFI 保护判定：调用点 ±48 字节 slowpath 调用（bisect O(n log n) 查找）
+- 并行检测：ProcessPoolExecutor 多核并行
+- 输入必须用 `lib.unstripped/`（strip 后 `__cfi_check` 丢失）
 
-## 输出文件（生成到 output_dir/cfi_detection_output 或 output_dir）
+## 输出文件
 
 | 文件 | 说明 |
 |------|------|
-| cfi_detection.sqlite | 结果数据库（summary/modules/so_files/name_table/so_functions） |
-| index.html | 直接双击在浏览器查看（检测时已后台启动 Flask 服务，端口 5000；若服务未跑则双击 启动服务.bat） |
-| app.py | Flask API，启动后访问 http://localhost:5000 |
-| cfi_function_report.xlsx | 4 Sheet 离线报告 |
-| 启动服务.bat / 停止服务.bat | 服务启停 |
+| cfi_detection.sqlite | 结果数据库（6 表 7 索引 + snapshot_meta 元数据表） |
+| index.html | 前端报告（ECharts 饼图 + 函数搜索 + 位置弹窗 + 动态列） |
+| data.js | 嵌入式数据（summary + modules） |
+| echarts.min.js | 图表库 |
+| app.py | Flask API（6 路由） |
+| cfi_detection_report.xlsx | Excel 报告（4 Sheet） |
+| 查看报告.pyw | 一键启动器（自动启服务 + 开浏览器） |
 
-## 模块名映射（路径第一段 → 中文名）
+## 模块风险等级
 
-ability=应用能力管理 account=账户管理 ai=人工智能 arkui=方舟UI引擎
-bundlemanager=包管理 commonlibrary=公共基础库 communication=通信
-distributeddatamgr=分布式数据管理 filemanagement=文件管理 graphic=图形
-hdf=HDF驱动框架 hiviewdfx=可靠性与可观测性 multimedia=多媒体
-notification=通知与事件 powermgr=电源管理 security=安全
-startup=系统启动 telephony=电话服务 thirdparty=第三方库
-usb=USB管理 web=Web引擎 window=窗口管理 （完整表见 SQLite modules.desc）
+- **高风险**（无 CFI）：security（密钥管理）、account（账户认证）、tee（可信执行环境）、useriam（生物特征）
+- **中风险**：arkui、arkcompiler、communication、multimedia、distributeddatamgr、bundlemanager、graphic、hdf
+- **低风险**：thirdparty（预编译无法修改）、xts、testfwk（非生产代码）

@@ -986,7 +986,7 @@ def run_detection(lib_dir, ELFFile, function_detail=True, dimension=None, progre
         'total_bti_func_without': total_bti_func_without,
         'has_vcall': 1 if (is_full or dimension == 'vcall') else 0,
         'has_icall': 1 if (is_full or dimension == 'icall') else 0,
-        'has_pac': 1 if (is_full or dimension == 'pac') else 0,
-        'has_bti': 1 if (is_full or dimension == 'bti') else 0,
+        'has_pac': 1 if ((is_full or dimension == 'pac') and aarch64_count > 0) else 0,
+        'has_bti': 1 if ((is_full or dimension == 'bti') and aarch64_count > 0) else 0,
     }
     return results, summary

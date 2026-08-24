@@ -58,7 +58,7 @@ output/full_20260811_143000/
 ├── data.js                 # 嵌入式数据
 ├── app.py                  # Flask API 服务
 ├── echarts.min.js          # 图表库
-├── cfi_function_report.xlsx # Excel 报告（4 个 Sheet）
+├── cfi_detection_report.xlsx # Excel 报告（4 个 Sheet）
 └── 查看报告.pyw            # 一键启动器
 ```
 

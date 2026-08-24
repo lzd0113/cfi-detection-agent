@@ -142,6 +142,10 @@ def main(
                     if key:
                         _write_env(root, env_var, key)
                         os.environ[env_var] = key
+                    else:
+                        console.print(f"[red]未输入 API Key，无法切换到 {new_model}[/red]")
+                        console.print(f"请用 [green]/setup[/green] 配置 {provider} 的 key，或在环境变量 {env_var} 中设置")
+                        continue
                 agent.reload_llm()
                 agent.reset()
                 console.print(f"[green]已切换模型: {agent.model}[/green] [dim](已清空对话历史，避免上下文混淆)[/dim]")
@@ -161,9 +165,52 @@ def main(
             console.print(t)
             continue
         if user == "/mcp":
-            agent.reconnect_mcp()
-            connected = agent.mcp_client and agent.mcp_client.connected
-            console.print(f"MCP sqlite: {'[green]已连接[/green]' if connected else '[red]未连接[/red]'}")
+            try:
+                import mcp as _mcp_mod
+                mcp_installed = True
+            except Exception:
+                mcp_installed = False
+            if not mcp_installed:
+                try:
+                    already_tried = mcp_install_failed
+                except NameError:
+                    already_tried = False
+                if already_tried:
+                    console.print("[yellow]MCP SDK 不可用（依赖的 pydantic-core DLL 加载失败）[/yellow]")
+                    console.print("[dim]本地查询工具 (query_summary/query_sql/search_functions 等) 功能完全相同，无需 MCP。[/dim]")
+                    continue
+                console.print("[yellow]MCP SDK 未安装，正在安装...[/yellow]")
+                import subprocess
+                result = subprocess.run([sys.executable, '-m', 'pip', 'install', 'mcp',
+                                        '--timeout', '120',
+                                        '-i', 'https://pypi.tuna.tsinghua.edu.cn/simple/'],
+                                      capture_output=True, text=True, timeout=300)
+                if result.returncode == 0:
+                    console.print("[green]MCP SDK 安装成功[/green]")
+                    import importlib
+                    importlib.invalidate_caches()
+                    for k in list(sys.modules.keys()):
+                        if k == 'mcp' or k.startswith('mcp.'):
+                            del sys.modules[k]
+                    try:
+                        import mcp as _mcp_mod
+                        mcp_installed = True
+                    except Exception as e:
+                        console.print(f"[yellow]import mcp 失败: {e}[/yellow]")
+                        mcp_installed = False
+                        mcp_install_failed = True
+                else:
+                    console.print(f"[red]MCP SDK 安装失败: {result.stderr[:200]}[/red]")
+                    console.print("[dim]可手动执行: pip install mcp[/dim]")
+                    mcp_install_failed = True
+                    continue
+            if mcp_installed:
+                agent.reconnect_mcp()
+                connected = agent.mcp_client and agent.mcp_client.connected
+                console.print(f"MCP sqlite: {'[green]已连接[/green]' if connected else '[red]未连接[/red]'}")
+            else:
+                console.print("[yellow]MCP SDK 不可用，本地查询工具可完全替代[/yellow]")
+                console.print("[dim]query_summary / query_modules / query_no_cfi_so / query_functions / search_functions / query_sql[/dim]")
             continue
         if user == "/setup":
             run_setup(config)

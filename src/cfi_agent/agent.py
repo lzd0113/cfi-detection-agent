@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 from .config import (
     load_config, get_llm_config, get_defaults, get_skill_paths, get_references,
@@ -33,7 +34,6 @@ class Agent:
 
         self.messages = []
         self._reset_messages()
-        self._connect_mcp()
 
     def _reset_messages(self):
         self.messages = [{"role": "system", "content": self._system_prompt()}]
@@ -52,8 +52,18 @@ class Agent:
             "执行前说明：开始执行任何检测任务前，必须先列出本次任务将使用到的工具清单（工具名 + 用途），让用户清楚整个流程会调用哪些工具。格式示例：「本次检测将使用以下工具：1. detect_vcall — vcall 虚函数调用检测 2. generate_excel — 生成报告」，然后再开始执行。",
             "组合调用：用户要多个维度时（如\"分析 .so 级和函数级\"\"看 vcall 和 icall 情况\"），可依次调用多个 detect_* 工具组合，每次调用结果会回传给你，你结合全部结果综合回答。简单 2-3 个工具组合可直接调用，不必每次都走 propose_plan。",
             "维度包含（重要）：detect_functions 已含 .so 级检测（不需先调 detect_so_level）；detect_vcall/icall 已含 .so 级 + 函数级检测（不需先调 detect_so_level/detect_functions）。调用一个 detect_functions/vcall/icall 即一次性输出该维度及更低维度的完整结果。只在用户明确只要 .so 级摸底（不要函数/调用点）时才用 detect_so_level。",
-            "反思自检：完整检测后调用 reflect_check 工具对 summary 做合理性校验（so总数一致性、保护率范围、有调用点却无保护等），发现异常向用户提示，确保结果可信。",
+            "反思自检与风险评估：完整检测后必须调用 reflect_check 工具，它会自动做合理性校验（so总数一致性、保护率范围）并基于安全知识库给出风险评估（高/中/低风险等级 + 具体风险项 + 修复建议）。你需要将风险评估结果用自然语言向用户解释，重点关注高风险项（如安全敏感模块无CFI、PAC/BTI覆盖率过低、vcall/icall保护率低等），给出优先修复建议。",
+            "",
+            "=== 安全知识库 ===",
         ]
+        knowledge_dir = Path(__file__).parent.parent / 'knowledge'
+        if knowledge_dir.is_dir():
+            for f in sorted(knowledge_dir.glob('*.md')):
+                try:
+                    content = f.read_text(encoding='utf-8')
+                    parts.append(f"## {f.stem}\n{content}")
+                except Exception:
+                    pass
         sc = build_skill_context(self.skills)
         if sc:
             parts.append("")

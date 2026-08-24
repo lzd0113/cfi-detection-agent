@@ -37,6 +37,7 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans
 .badge.green{background:#d1fae5;color:#065f46;}
 .badge.red{background:#fee2e2;color:#991b1b;}
 .badge.blue{background:#dbeafe;color:#1e40af;}
+.badge.orange{background:#fed7aa;color:#92400e;}
 .badge.dark{background:#e2e8f0;color:#475569;}
 .module-content{padding:10px 22px;display:none;}
 .so-section{margin-bottom:6px;border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:box-shadow .2s;}
@@ -254,8 +255,14 @@ function renderModules(mods){
   var hs=typeof EMBEDDED_DATA!=='undefined'?EMBEDDED_DATA.summary:{};
   var fd=hs.function_detail!==undefined&&hs.function_detail!==0;
   document.getElementById('modules').innerHTML=mods.map(function(m){
-    var funcStats=fd?'<span>保护:'+m.cfi_protected_count+'</span><span class="red">未保护:'+m.truly_unprotected_count+'</span>'+badgeForRate(m.cfi_rate_percent):'';
-    return '<div class="module-block"><div class="module-head" onclick="toggleModule(\''+m.module+'\')"><h3>'+m.module+' <small>'+m.desc+'</small></h3><div class="mod-stats"><span>.so: '+m.total_so+'</span><span class="badge green">CFI:'+m.cfi_enabled_so+'</span><span class="badge red">无CFI:'+m.cfi_not_enabled_so+'</span>'+funcStats+'</div></div><div id="content_'+m.module+'" class="module-content"></div></div>';
+    var soRate=m.cfi_rate_percent||0;
+    var badges='<span class="badge dark">.so: '+m.total_so+'</span><span class="badge green">CFI:'+m.cfi_enabled_so+'</span><span class="badge red">无CFI:'+m.cfi_not_enabled_so+'</span>'+badgeForRate(soRate);
+    if(fd){
+      var ft=m.cfi_protected_count+m.truly_unprotected_count;
+      var fr=ft>0?Math.round(m.cfi_protected_count/ft*1000)/10:0;
+      badges+='<span class="badge green">保护函数:'+m.cfi_protected_count+'</span><span class="badge red">未保护函数:'+m.truly_unprotected_count+'</span>'+badgeForRate(fr);
+    }
+    return '<div class="module-block"><div class="module-head" onclick="toggleModule(\''+m.module+'\')"><h3>'+m.module+' <small>'+m.desc+'</small></h3><div class="mod-stats">'+badges+'</div></div><div id="content_'+m.module+'" class="module-content"></div></div>';
   }).join('');
 }
 

@@ -21,7 +21,7 @@ def ensure_openpyxl():
 
 def generate_excel(summary, modules, output_dir, include_calls=True):
     Workbook, Font, PatternFill, Alignment, Border, Side = ensure_openpyxl()
-    excel_file = os.path.join(output_dir, 'cfi_function_report.xlsx')
+    excel_file = os.path.join(output_dir, 'cfi_detection_report.xlsx')
     function_detail = summary.get('function_detail', True)
 
     wb = Workbook()

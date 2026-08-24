@@ -3,7 +3,7 @@
 llm:
   # 模型字符串带 provider 前缀，换模型只改这里 + 对应 .env 的 key
   # 示例：openai/gpt-4o-mini | anthropic/claude-3-5-sonnet-20240620 | dashscope/qwen-plus | deepseek/deepseek-chat
-  model: deepseek/deepseek-chat
+  model: zhipu/glm-4
   # 可选：OpenAI 兼容端点（如本地 vllm/ollama 的 openai 接口）
   # base_url: http://localhost:8000/v1
   temperature: 0.3

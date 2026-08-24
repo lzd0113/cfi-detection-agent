@@ -14,7 +14,7 @@ class LLMClient:
         self.api_key = api_key or 'EMPTY'
         self.base_url = (api_base or 'https://api.openai.com/v1').rstrip('/')
         self.temperature = temperature
-        self.client = httpx.Client(timeout=httpx.Timeout(300.0, connect=30.0))
+        self.client = httpx.Client(timeout=httpx.Timeout(60.0, connect=10.0))
 
     @classmethod
     def from_config(cls, llm_cfg):
@@ -91,10 +91,7 @@ class LLMClient:
                                 if fn.get('arguments'):
                                     slot['arguments'] += fn['arguments']
             except httpx.HTTPError as e:
-                if not data_received and attempt < _MAX_RETRIES:
-                    time.sleep(2 ** (attempt + 1))
-                    continue
-                raise RuntimeError(f"LLM 网络错误: {e}")
+                raise RuntimeError(f"LLM 网络错误（无法连接 {self.base_url}）: {e}")
 
             content = ''.join(parts)
             tool_calls = []
@@ -139,8 +136,5 @@ class LLMClient:
                     })
                 return content, tool_calls
             except httpx.HTTPError as e:
-                if attempt < _MAX_RETRIES:
-                    time.sleep(2 ** (attempt + 1))
-                    continue
-                raise RuntimeError(f"LLM 网络错误: {e}")
+                raise RuntimeError(f"LLM 网络错误（无法连接 {self.base_url}）: {e}")
         raise RuntimeError("LLM 请求重试次数耗尽")
