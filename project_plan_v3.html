@@ -1,0 +1,691 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenHarmony CFI 检测 Agent 课题计划</title>
+    <style>
+        :root {
+            --primary: #C7000B;
+            --primary-light: #FDE8E8;
+            --primary-dark: #99000A;
+            --secondary: #7F7F7F;
+            --success: #C7000B;
+            --success-light: #FDE8E8;
+            --warning: #7F7F7F;
+            --danger: #C7000B;
+            --bg: #ffffff;
+            --card-bg: #ffffff;
+            --text: #333333;
+            --text-light: #7F7F7F;
+            --border: #E0E0E0;
+            --shadow: 0 2px 4px rgba(0,0,0,0.06);
+        }
+            --border: #E0E0E0;
+            --shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+
+        .hero { background: #C7000B; color: white; padding: 56px 20px; text-align: center; position: relative; overflow: hidden; }
+        .hero::before { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 60%); animation: rotate 30s linear infinite; }
+        @keyframes rotate { to { transform: rotate(360deg); } }
+        .hero h1 { font-size: 2.2rem; margin-bottom: 8px; position: relative; z-index: 1; }
+        .hero .subtitle { font-size: 1.1rem; opacity: 0.9; position: relative; z-index: 1; }
+        .hero .meta { display: inline-flex; gap: 20px; margin-top: 22px; position: relative; z-index: 1; flex-wrap: wrap; justify-content: center; }
+        .hero .meta-item { background: rgba(255,255,255,0.15); padding: 7px 18px; border-radius: 50px; backdrop-filter: blur(10px); font-size: 0.9rem; }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 36px 20px; }
+
+        .section-title { font-size: 1.6rem; font-weight: 700; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 3px solid var(--primary); display: flex; align-items: center; gap: 10px; }
+
+        .progress-section { background: var(--card-bg); border-radius: 14px; padding: 28px; margin-bottom: 32px; box-shadow: var(--shadow); }
+        .progress-bar-container { height: 12px; background: #E0E0E0; border-radius: 6px; overflow: hidden; margin: 12px 0; }
+        .progress-bar { height: 100%; background: linear-gradient(90deg, var(--success), var(--primary), var(--secondary)); border-radius: 6px; transition: width 1s ease; }
+        .progress-label { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-light); }
+
+        .arch-grid { display: grid; grid-template-columns: 1fr; gap: 20px; margin-bottom: 36px; }
+        .arch-card { background: var(--card-bg); border-radius: 14px; padding: 24px; box-shadow: var(--shadow); border-top: 4px solid var(--primary); }
+        .arch-card.pac { border-top-color: var(--secondary); }
+        .arch-card h3 { font-size: 1.1rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+        .arch-card .file-path { font-size: 0.8rem; color: var(--text-light); font-family: monospace; margin-bottom: 14px; background: #FAFAFA; padding: 4px 8px; border-radius: 4px; display: inline-block; }
+        .layer-list { list-style: none; }
+        .layer-item { padding: 8px 0; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 10px; }
+        .layer-item:last-child { border-bottom: none; }
+        .layer-badge { font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; color: white; flex-shrink: 0; margin-top: 2px; }
+        .layer-badge.l1 { background: var(--success); }
+        .layer-badge.l2 { background: var(--primary); }
+        .layer-badge.l3 { background: var(--warning); }
+        .layer-badge.l4 { background: var(--secondary); }
+        .layer-badge.l5 { background: var(--danger); }
+        .layer-name { font-weight: 600; font-size: 0.9rem; }
+        .layer-desc { font-size: 0.82rem; color: var(--text-light); margin-top: 2px; }
+        .tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin-top: 10px; }
+        .tool-chip { background: #FAFAFA; border: 1px solid #C7000B; padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; color: var(--primary-dark); text-align: center; cursor: pointer; }
+        .tool-chip:hover { background: #FDE8E8; border-color: #93c5fd; }
+        .tool-chip.query { background: #FAFAFA; border-color: #C7000B; color: #C7000B; }
+        .tool-chip.query:hover { background: #FDE8E8; }
+        .tool-chip.report { background: #FAFAFA; border-color: #7F7F7F; color: #7F7F7F; }
+        .tool-chip.report:hover { background: #7F7F7F; }
+
+        .timeline { position: relative; padding-left: 44px; }
+        .timeline::before { content: ''; position: absolute; left: 18px; top: 0; bottom: 0; width: 4px; background: linear-gradient(to bottom, var(--success), var(--primary), var(--warning), var(--text-light)); border-radius: 2px; }
+
+        .phase { background: var(--card-bg); border-radius: 14px; padding: 26px; margin-bottom: 24px; box-shadow: var(--shadow); position: relative; transition: transform 0.2s; }
+        .phase:hover { transform: translateX(4px); }
+        .phase::before { content: ''; position: absolute; left: -34px; top: 26px; width: 18px; height: 18px; border-radius: 50%; background: var(--card-bg); border: 4px solid var(--success); z-index: 1; }
+        .phase.p2::before { border-color: var(--primary); }
+        .phase.p3::before { border-color: var(--warning); }
+        .phase.p4::before { border-color: var(--text-light); }
+
+        .phase-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+        .phase-title { font-size: 1.2rem; font-weight: 700; }
+        .phase-date { background: var(--success); color: white; padding: 3px 14px; border-radius: 50px; font-size: 0.82rem; white-space: nowrap; }
+        .phase.p2 .phase-date { background: var(--primary); }
+        .phase.p3 .phase-date { background: var(--warning); }
+        .phase.p4 .phase-date { background: var(--text-light); }
+
+        .phase-status { font-size: 0.78rem; padding: 2px 10px; border-radius: 50px; font-weight: 600; margin-left: 8px; }
+        .phase-status.done { background: #FDE8E8; color: #C7000B; }
+        .phase-status.active { background: #FDE8E8; color: #C7000B; }
+        .phase-status.partial { background: #FAFAFA; color: #7F7F7F; }
+        .phase-status.todo { background: #FAFAFA; color: #7F7F7F; }
+
+        .phase-desc { color: var(--text-light); margin-bottom: 16px; font-size: 0.92rem; }
+        .task-list { list-style: none; }
+        .task-item { padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 10px; }
+        .task-item:last-child { border-bottom: none; }
+        .task-icon { width: 22px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 0.68rem; font-weight: 700; color: white; flex-shrink: 0; margin-top: 2px; }
+        .task-icon.done { background: var(--success); }
+        .task-icon.active { background: var(--primary); }
+        .task-icon.partial { background: var(--warning); }
+        .task-icon.todo { background: var(--text-light); }
+        .task-content { flex: 1; }
+        .task-title-text { font-weight: 600; font-size: 0.92rem; }
+        .task-detail { font-size: 0.82rem; color: var(--text-light); margin-top: 2px; }
+
+        .deliverables { margin-top: 16px; padding: 14px; background: #FAFAFA; border-radius: 10px; border-left: 4px solid var(--success); }
+        .deliverables-title { font-size: 0.82rem; font-weight: 700; color: var(--success); margin-bottom: 6px; }
+        .deliverables ul { padding-left: 18px; }
+        .deliverables li { font-size: 0.82rem; color: var(--text-light); margin: 3px 0; }
+
+        .tech-stack { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+        .tech-tag { background: #FAFAFA; border: 1px solid var(--border); padding: 3px 10px; border-radius: 50px; font-size: 0.78rem; color: var(--text-light); }
+
+        .milestone { background: linear-gradient(135deg, #f0f4ff 0%, #faf5ff 100%); border: 2px solid var(--primary-light); border-radius: 10px; padding: 16px; margin: 16px 0; text-align: center; }
+        .milestone-icon { font-size: 1.8rem; }
+        .milestone-title { font-weight: 700; margin: 6px 0; font-size: 1rem; }
+
+        .stat-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 14px 0; }
+        .stat-box { background: #FAFAFA; border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; text-align: center; flex: 1; min-width: 100px; }
+        .stat-box .num { font-size: 1.5rem; font-weight: 800; color: var(--primary); }
+        .stat-box .lbl { font-size: 0.78rem; color: var(--text-light); margin-top: 2px; }
+        .stat-box.green .num { color: var(--success); }
+        .stat-box.purple .num { color: var(--secondary); }
+
+        .footer { text-align: center; padding: 36px 20px; color: var(--text-light); font-size: 0.88rem; }
+
+        .term { color: var(--primary); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+        .term:hover { color: var(--primary-dark); }
+
+        .term-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1000; display: none; justify-content: center; align-items: flex-start; padding: 60px 20px; overflow-y: auto; }
+        .term-overlay.active { display: flex; }
+        .term-modal { background: #fff; border-radius: 14px; width: 560px; max-width: 95%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); overflow: hidden; }
+        .term-modal-header { background: linear-gradient(135deg, #C7000B, #99000A); color: #fff; padding: 16px 24px; font-size: 1rem; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+        .term-modal-close { background: rgba(255,255,255,0.2); border: none; color: #fff; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; }
+        .term-modal-close:hover { background: rgba(255,255,255,0.3); }
+        .term-modal-body { padding: 20px 24px; }
+        .term-modal-body p { font-size: 0.88rem; color: var(--text); margin-bottom: 10px; line-height: 1.7; }
+        .term-modal-body .code { background: #FAFAFA; border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; font-family: monospace; font-size: 0.78rem; color: var(--primary-dark); margin: 8px 0; white-space: pre; overflow-x: auto; }
+    </style>
+</head>
+<body>
+
+<div class="hero">
+    <h1>OpenHarmony CFI 检测 Agent</h1>
+    <p class="subtitle">前向 CFI (LLVM CFI + BTI) + 后向 CFI (PAC) — AI 驱动的控制流完整性自动化检测与可视化系统</p>
+    <div class="meta">
+        <span class="meta-item">2026.07.01 — 2026.08.28</span>
+        <span class="meta-item">rk3568 | OpenHarmony v4.1 + v6.1</span>
+        <span class="meta-item">ARM 32-bit Thumb + AArch64</span>
+        <span class="meta-item">并行检测 + 7 种检测模式</span>
+    </div>
+</div>
+
+<div class="container">
+
+<!-- Progress -->
+<div class="progress-section">
+    <h2 style="margin-bottom: 8px;">整体进度</h2>
+    <p style="color: var(--text-light); font-size: 0.9rem; margin-bottom: 8px;">全部阶段已完成</p>
+    <div class="progress-bar-container">
+        <div class="progress-bar" style="width: 100%;"></div>
+    </div>
+    <div class="progress-label">
+        <span>7月1日 开始</span>
+        <span style="color: var(--primary); font-weight: 600;">完成: 8月28日 (100%)</span>
+        <span>8月28日 截止</span>
+    </div>
+</div>
+
+<!-- Architecture Overview -->
+<h2 class="section-title">已建成系统架构</h2>
+
+<div class="arch-grid">
+    <!-- Unified CFI Agent -->
+    <div class="arch-card">
+        <h3>CFI Agent（统一检测引擎 — 前向 + 后向 CFI）</h3>
+        <div class="file-path">E:\cfi_agent\ — LLM 驱动、MCP 集成、CLI 交互、并行检测</div>
+        <div style="font-size: 0.8rem; color: var(--success); background: #FAFAFA; padding: 6px 12px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #C7000B;">
+            验证状态：ARM 32-bit (v4.1, 1868 .so) 和 AArch64 (v6.1, 2953 .so) 均已全量批量验证 ✓
+        </div>
+
+        <div class="stat-row">
+            <div class="stat-box green"><div class="num">21</div><div class="lbl">Agent 工具</div></div>
+            <div class="stat-box" style="cursor: pointer;" onclick="showTerm('detect_modes')"><div class="num">7</div><div class="lbl">检测模式</div></div>
+            <div class="stat-box purple"><div class="num">5</div><div class="lbl">检测维度</div></div>
+            <div class="stat-box green" style="cursor: pointer;" onclick="showTerm('sqlite_tables')"><div class="num">6</div><div class="lbl">SQLite 表</div></div>
+            <div class="stat-box purple" style="cursor: pointer;" onclick="showTerm('sqlite_indexes')"><div class="num">7</div><div class="lbl">索引</div></div>
+        </div>
+
+        <ul class="layer-list">
+            <li class="layer-item">
+                <span class="layer-badge l1">.so</span>
+                <div><div class="layer-name">.so 文件级</div><div class="layer-desc">check_cfi_enabled — 检测 __cfi_check 符号 (32 位 + 64 位均支持)</div></div>
+            </li>
+            <li class="layer-item">
+                <span class="layer-badge l2">FN</span>
+                <div><div class="layer-name">函数级分类</div><div class="layer-desc">classify_functions — func.cfi → 受保护; __cfi* → 基础设施; 无 .cfi → 真正未保护</div></div>
+            </li>
+            <li class="layer-item">
+                <span class="layer-badge l3">CALL</span>
+                <div><div class="layer-name">调用点级 (vcall + icall)</div><div class="layer-desc">scan_call_sites — 自动识别 Thumb / AArch64; BLR 间接调用扫描; 寄存器回溯判定 vcall (LDR 基址寄存器追踪) vs icall (非虚函数间接调用); <span onclick="showTerm('slowpath')">±48 字节 slowpath CFI 判定</span></div></div>
+            </li>
+            <li class="layer-item">
+                <span class="layer-badge l4">PAC</span>
+                <div><div class="layer-name">PAC 返回地址保护</div><div class="layer-desc">analyze_pac_bti — PACIASP/PACIBSP (签名) + AUTIASP/AUTIBSP/RETAA/RETAB (认证); 函数级分类: protected/sign_only/no_pac</div></div>
+            </li>
+            <li class="layer-item">
+                <span class="layer-badge l5">BTI</span>
+                <div><div class="layer-name">BTI 分支目标标识</div><div class="layer-desc">analyze_pac_bti — <span onclick="showTerm('gnu_property')">.note.gnu.property 属性检查</span> + HINT 字节扫描 + 函数入口覆盖率; 32 位自动跳过</div></div>
+            </li>
+        </ul>
+
+        <div style="margin-top: 12px;">
+            <div style="font-size: 0.82rem; font-weight: 600; margin-bottom: 6px; color: var(--text);">Agent 工具 (21 个, 点击查看说明):</div>
+            <div class="tool-grid">
+                <div class="tool-chip" onclick="showTerm('t_run_cfi_detection')">run_cfi_detection</div>
+                <div class="tool-chip" onclick="showTerm('t_detect_so_level')">detect_so_level</div>
+                <div class="tool-chip" onclick="showTerm('t_detect_functions')">detect_functions</div>
+                <div class="tool-chip" onclick="showTerm('t_detect_vcall')">detect_vcall</div>
+                <div class="tool-chip" onclick="showTerm('t_detect_icall')">detect_icall</div>
+                <div class="tool-chip" onclick="showTerm('t_detect_pac')">detect_pac</div>
+                <div class="tool-chip" onclick="showTerm('t_detect_bti')">detect_bti</div>
+                <div class="tool-chip query" onclick="showTerm('t_query_summary')">query_summary</div>
+                <div class="tool-chip query" onclick="showTerm('t_query_no_cfi_so')">query_no_cfi_so</div>
+                <div class="tool-chip query" onclick="showTerm('t_query_functions')">query_functions</div>
+                <div class="tool-chip query" onclick="showTerm('t_search_functions')">search_functions</div>
+                <div class="tool-chip query" onclick="showTerm('t_query_modules')">query_modules</div>
+                <div class="tool-chip query" onclick="showTerm('t_query_sql')">query_sql</div>
+                <div class="tool-chip report" onclick="showTerm('t_regenerate_report')">regenerate_report</div>
+                <div class="tool-chip report" onclick="showTerm('t_start_service')">start_report_service</div>
+                <div class="tool-chip report" onclick="showTerm('t_stop_service')">stop_report_service</div>
+                <div class="tool-chip" onclick="showTerm('t_propose_plan')">propose_plan</div>
+                <div class="tool-chip" onclick="showTerm('t_reflect_check')">reflect_check</div>
+                <div class="tool-chip" onclick="showTerm('t_list_history')">list_history</div>
+                <div class="tool-chip" onclick="showTerm('t_compare_changes')">compare_changes</div>
+                <div class="tool-chip" onclick="showTerm('t_generate_changes_excel')">generate_changes_excel</div>
+            </div>
+        </div>
+
+        <div style="margin-top: 14px;">
+            <div style="font-size: 0.82rem; font-weight: 600; margin-bottom: 6px;">输出产物:</div>
+            <div class="tech-stack">
+                <span class="tech-tag">SQLite (6 表 7 索引 + snapshot_meta)</span>
+                <span class="tech-tag">HTML (ECharts + 函数搜索 + 位置弹窗)</span>
+                <span class="tech-tag">Excel (4 Sheet)</span>
+                <span class="tech-tag">Flask API (6 路由)</span>
+                <span class="tech-tag">data.js (嵌入式数据)</span>
+                <span class="tech-tag">.pyw 启动器</span>
+                <span class="tech-tag">历史对比 (跨检测类型)</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Architecture Diagram -->
+<h2 class="section-title">Agent 架构图</h2>
+<div style="background: var(--card-bg); border-radius: 14px; padding: 28px; margin-bottom: 36px; box-shadow: var(--shadow); overflow-x: auto;">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 0; min-width: 700px;">
+
+        <!-- User Layer -->
+        <div style="background: linear-gradient(135deg, rgba(199,0,11,0.85), rgba(153,0,10,0.85)); color: #fff; border-radius: 10px; padding: 14px 32px; text-align: center; min-width: 400px;">
+            <div style="font-weight: 700; font-size: 0.95rem;">用户</div>
+            <div style="font-size: 0.78rem; opacity: 0.85; margin-top: 2px;">自然语言描述需求，如"对 E:/lib.unstripped_6.1 做完整 CFI 检测"</div>
+        </div>
+        <div style="width: 3px; height: 20px; background: var(--border);"></div>
+
+        <!-- CLI Layer -->
+        <div style="background: #FAFAFA; border: 2px solid #C7000B; border-radius: 10px; padding: 14px 28px; text-align: center; min-width: 500px;">
+            <div style="font-weight: 700; font-size: 0.9rem; color: var(--primary-dark);;">CLI 交互层 (cli.py)</div>
+            <div style="font-size: 0.78rem; color: var(--text-light); margin-top: 4px;">Typer CLI + prompt_toolkit 补全 + rich 美化 + 斜杠命令 (/model /tools /clear /setup ...)</div>
+        </div>
+        <div style="width: 3px; height: 20px; background: var(--border);"></div>
+
+        <!-- Agent Layer -->
+        <div style="background: #FAFAFA; border: 2px solid #C7000B; border-radius: 10px; padding: 14px 28px; text-align: center; min-width: 560px;">
+            <div style="font-weight: 700; font-size: 0.9rem; color: #C7000B;">Agent 编排层 (agent.py)</div>
+            <div style="font-size: 0.78rem; color: var(--text-light); margin-top: 4px;">系统提示 + 消息循环 + 工具调度 + propose_plan 规划 + reflect_check 自检 + MCP 重连</div>
+        </div>
+        <div style="width: 3px; height: 20px; background: var(--border);"></div>
+
+        <!-- LLM Layer -->
+        <div style="display: flex; gap: 12px; min-width: 700px; justify-content: center;">
+            <div style="background: #FAFAFA; border: 2px solid #7F7F7F; border-radius: 10px; padding: 12px 20px; text-align: center; flex: 1;">
+                <div style="font-weight: 700; font-size: 0.85rem; color: #7F7F7F;">LLM 客户端 (llm.py)</div>
+                <div style="font-size: 0.72rem; color: var(--text-light); margin-top: 3px;">流式输出 + 工具调用 + 指数退避重试</div>
+            </div>
+            <div style="background: #FAFAFA; border: 2px solid #7F7F7F; border-radius: 10px; padding: 12px 20px; text-align: center; flex: 1;">
+                <div style="font-weight: 700; font-size: 0.85rem; color: #7F7F7F;">MCP 客户端 (mcp_client.py)</div>
+                <div style="font-size: 0.72rem; color: var(--text-light); margin-top: 3px;">SQLite MCP 工具 + 异步线程 + 资源清理</div>
+            </div>
+        </div>
+        <div style="width: 3px; height: 20px; background: var(--border);"></div>
+
+        <!-- Tools Package -->
+        <div style="background: #FAFAFA; border: 2px solid var(--primary); border-radius: 10px; padding: 16px 24px; min-width: 700px;">
+            <div style="font-weight: 700; font-size: 0.9rem; color: var(--primary-dark); text-align: center; margin-bottom: 10px;">tools/ 包 — 21 个工具</div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
+                <div style="background: #FDE8E8; border-radius: 6px; padding: 6px 12px; font-size: 0.75rem;">
+                    <div style="font-weight: 600; color: #C7000B;">detect_tools.py</div>
+                    <div style="color: var(--text-light); margin-top: 2px;">7 种检测模式</div>
+                </div>
+                <div style="background: #FDE8E8; border-radius: 6px; padding: 6px 12px; font-size: 0.75rem;">
+                    <div style="font-weight: 600; color: #C7000B;">query_tools.py</div>
+                    <div style="color: var(--text-light); margin-top: 2px;">6 个查询工具</div>
+                </div>
+                <div style="background: #FAFAFA; border-radius: 6px; padding: 6px 12px; font-size: 0.75rem;">
+                    <div style="font-weight: 600; color: #7F7F7F;">service_tools.py</div>
+                    <div style="color: var(--text-light); margin-top: 2px;">8 个服务/元工具</div>
+                </div>
+                <div style="background: #FAFAFA; border-radius: 6px; padding: 6px 12px; font-size: 0.75rem;">
+                    <div style="font-weight: 600; color: var(--text-light);">registry.py</div>
+                    <div style="color: var(--text-light); margin-top: 2px;">ToolRegistry 基类</div>
+                </div>
+            </div>
+        </div>
+        <div style="width: 3px; height: 20px; background: var(--border);"></div>
+
+        <!-- Engine Layer -->
+        <div style="background: #FAFAFA; border: 2px solid #C7000B; border-radius: 10px; padding: 16px 24px; min-width: 700px;">
+            <div style="font-weight: 700; font-size: 0.9rem; color: #C7000B; text-align: center; margin-bottom: 10px;">engine/ — 检测引擎 + 报告生成</div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
+                <div style="background: #FAFAFA; border-radius: 6px; padding: 6px 12px; font-size: 0.75rem; text-align: center;">
+                    <div style="font-weight: 600; color: #C7000B;">detection.py</div>
+                    <div style="color: var(--text-light); margin-top: 2px;">ELF 解析 + 指令解码 + 并行检测</div>
+                </div>
+                <div style="background: #FAFAFA; border-radius: 6px; padding: 6px 12px; font-size: 0.75rem; text-align: center;">
+                    <div style="font-weight: 600; color: #C7000B;">demangle.py</div>
+                    <div style="color: var(--text-light); margin-top: 2px;">c++filt 批量 demangle</div>
+                </div>
+                <div style="background: #FAFAFA; border-radius: 6px; padding: 6px 12px; font-size: 0.75rem; text-align: center;">
+                    <div style="font-weight: 600; color: #C7000B;">report_utils.py</div>
+                    <div style="color: var(--text-light); margin-top: 2px;">统一报告生成</div>
+                </div>
+                <div style="background: #FAFAFA; border-radius: 6px; padding: 6px 12px; font-size: 0.75rem; text-align: center;">
+                    <div style="font-weight: 600; color: #C7000B;">db.py</div>
+                    <div style="color: var(--text-light); margin-top: 2px;">SQLite 6 表 7 索引</div>
+                </div>
+                <div style="background: #FAFAFA; border-radius: 6px; padding: 6px 12px; font-size: 0.75rem; text-align: center;">
+                    <div style="font-weight: 600; color: #C7000B;">excel_report.py</div>
+                    <div style="color: var(--text-light); margin-top: 2px;">openpyxl 4 Sheet</div>
+                </div>
+                <div style="background: #FAFAFA; border-radius: 6px; padding: 6px 12px; font-size: 0.75rem; text-align: center;">
+                    <div style="font-weight: 600; color: #C7000B;">template.html</div>
+                    <div style="color: var(--text-light); margin-top: 2px;">ECharts 可视化</div>
+                </div>
+                <div style="background: #FAFAFA; border-radius: 6px; padding: 6px 12px; font-size: 0.75rem; text-align: center;">
+                    <div style="font-weight: 600; color: #C7000B;">app_template.py</div>
+                    <div style="color: var(--text-light); margin-top: 2px;">Flask API 模板</div>
+                </div>
+            </div>
+        </div>
+        <div style="width: 3px; height: 20px; background: var(--border);"></div>
+
+        <!-- Output Layer -->
+        <div style="background: linear-gradient(135deg, #FAFAFA, #FAFAFA); border: 2px solid var(--success); border-radius: 10px; padding: 14px 24px; min-width: 700px;">
+            <div style="font-weight: 700; font-size: 0.9rem; color: var(--success); text-align: center; margin-bottom: 8px;">输出产物</div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
+                <span class="tech-tag" style="background: #FDE8E8; color: #C7000B;">SQLite 数据库</span>
+                <span class="tech-tag" style="background: #FDE8E8; color: #C7000B;">HTML 报告</span>
+                <span class="tech-tag" style="background: #FDE8E8; color: #C7000B;">Excel 报告</span>
+                <span class="tech-tag" style="background: #FDE8E8; color: #C7000B;">Flask API</span>
+                <span class="tech-tag" style="background: #FDE8E8; color: #C7000B;">.pyw 启动器</span>
+                <span class="tech-tag" style="background: #FDE8E8; color: #C7000B;">GitHub 开源</span>
+                <span class="tech-tag" style="background: #FDE8E8; color: #C7000B;">答辩材料</span>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Timeline -->
+<h2 class="section-title">项目时间线</h2>
+<div class="timeline">
+
+<!-- Phase 1 -->
+<div class="phase">
+    <div class="phase-header">
+        <div>
+            <span class="phase-title">阶段一：环境搭建与 CFI 基础</span>
+            <span class="phase-status done">已完成</span>
+        </div>
+        <span class="phase-date">7月1日 — 7月14日</span>
+    </div>
+    <p class="phase-desc">OpenHarmony 源码获取、编译环境搭建、rk3568 编译烧录、CFI 基础学习与反汇编分析。</p>
+    <ul class="task-list">
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">源码获取与环境搭建</div><div class="task-detail">VMware + Ubuntu 20.04, FileZilla/Samba 传输, hb/build.sh 编译 rk3568</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">烧录到 rk3568 开发板</div><div class="task-detail">Rockchip 烧录工具, 完整系统镜像</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">CFI 基础知识学习</div><div class="task-detail">前向/后向 CFI 原理, 类型哈希, 跳转表, 间接调用检查, 跨 DSO 校验, strip 影响</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">CFI 反汇编分析</div><div class="task-detail">__cfi_check 入口, __cfi_check_fail, .cfi 后缀插桩函数, CFI 影子区 trap 填充, blocklist 对比</div></div></li>
+    </ul>
+    <div class="deliverables">
+        <div class="deliverables-title">阶段交付物</div>
+        <ul>
+            <li>可运行的 rk3568 OpenHarmony 设备 + 完整编译产物</li>
+            <li>CFI 反汇编分析文档</li>
+        </ul>
+    </div>
+</div>
+
+<!-- Phase 2 -->
+<div class="phase p2">
+    <div class="phase-header">
+        <div>
+            <span class="phase-title">阶段二：检测方法研究与 Agent 实现</span>
+            <span class="phase-status done">已完成</span>
+        </div>
+        <span class="phase-date">7月15日 — 7月28日</span>
+    </div>
+    <p class="phase-desc">CFI Agent 全流程实现 + PAC/BTI 检测集成到统一引擎。前向 CFI (LLVM CFI + BTI) 与后向 CFI (PAC) 均已覆盖并批量验证。</p>
+    <ul class="task-list">
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">CFI 技术体系研究</div><div class="task-detail">前向 CFI: LLVM -fsanitize=cfi; BTI (分支目标标识); 后向 CFI: ARM PAC (签名/认证返回地址)</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">用户态 CFI 配置分析</div><div class="task-detail">全局开关 + 逐组件 opt-in, cfi_cross_dso, blocklist, 调试模式</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">目标架构分析</div><div class="task-detail">32 位用户态 (ARM Thumb, v4.1) + 64 位 AArch64 (v6.1); 两种指令集均已支持并批量验证</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">前向 CFI 检测 — .so 级 + 函数级 + 调用点级</div><div class="task-detail">check_cfi_enabled; classify_functions; scan_call_sites (vcall/icall + bisect CFI 匹配)</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">AArch64 指令解码</div><div class="task-detail">decode_aarch64_bl, is_aarch64_blr, is_aarch64_ldr_mem; find_slowpath_plt (.rela.plt)</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">后向 CFI 检测 — PAC 返回地址保护</div><div class="task-detail">已集成到 detection.py: PACIASP/PACIBSP + AUTIBSP/RETAA/RETAB; 函数级 sign/auth/protected 分类; v6.1 全量验证</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">前向 CFI 检测 — BTI 分支目标标识</div><div class="task-detail">已集成到 detection.py: .note.gnu.property + HINT 字节扫描 + 函数入口覆盖率; v6.1 全量验证</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">CFI 运行时分析与覆盖率验证</div><div class="task-detail">reflect_check 自检工具; 32 位 (v4.1) 和 64 位 (v6.1) 均已批量验证</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">CFI 与 PAC/BTI 协同分析</div><div class="task-detail">统一检测引擎: 一次检测覆盖 CFI + vcall/icall + PAC + BTI 全维度</div></div></li>
+    </ul>
+    <div class="deliverables">
+        <div class="deliverables-title">阶段交付物</div>
+        <ul>
+            <li>统一检测引擎 detection.py (合并 4 个 run_* 函数, 支持 7 种检测模式)</li>
+            <li>AArch64 + ARM Thumb 双架构指令解码</li>
+            <li>5 维检测: .so 级 / 函数级 / vcall / icall / PAC+BTI</li>
+            <li>v4.1 (1868 .so, 32 位) + v6.1 (2953 .so, 64 位) 全量批量验证 ✓</li>
+        </ul>
+    </div>
+    <div class="tech-stack">
+        <span class="tech-tag">pyelftools</span>
+        <span class="tech-tag">AArch64 BL/BLR/LDR</span>
+        <span class="tech-tag">ARM Thumb BL/BLX</span>
+        <span class="tech-tag">.rela.plt</span>
+        <span class="tech-tag">HINT imm7 (PAC/BTI)</span>
+        <span class="tech-tag">RETAA/RETAB</span>
+        <span class="tech-tag">bisect CFI 匹配</span>
+        <span class="tech-tag">cxxfilt demangle</span>
+    </div>
+</div>
+
+<!-- Phase 3 -->
+<div class="phase p3">
+    <div class="phase-header">
+        <div>
+            <span class="phase-title">阶段三：Web 可视化与高级检测</span>
+            <span class="phase-status done">核心已完成</span>
+        </div>
+        <span class="phase-date">7月29日 — 8月25日</span>
+    </div>
+    <p class="phase-desc">检测管线、基础报告、高级可视化、并行优化、交互式功能均已建成。32 位架构预检、统一错误处理等已完善。</p>
+    <ul class="task-list">
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">检测管线 (run_full_pipeline)</div><div class="task-detail">一键: 检测 → SQLite → HTML → Excel → Flask → .pyw, 支持 full/fast 模式</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">SQLite 数据库</div><div class="task-detail">6 表 (summary/modules/so_files/name_table/so_functions/snapshot_meta) + 7 索引; MCP sqlite 工具集成</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">HTML 报告 (ECharts)</div><div class="task-detail">总体统计 + 模块列表 + 饼图 + 函数搜索 + 出现位置弹窗 + 动态列 (CFI/PAC/BTI) + HTML 转义</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">Excel 报告 (4 Sheet)</div><div class="task-detail">总体统计 / 模块与.so详情 / 无CFI的.so / 预编译厂商库</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">Flask REST API</div><div class="task-detail">6 路由: /api/summary /api/modules /api/so_functions /api/search /api/function_locations /data.js</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">历史对比与变化报告</div><div class="task-detail">统一 history 目录 + snapshot_meta 跨检测类型对比 + 4 种变化类型 (开启/关闭/新增/移除 .so)</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">预编译厂商库检测</div><div class="task-detail">VENDOR_LIBS: libmali-bifrost / librga / librockchip_mpp / librkaiq</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">检测精度验证</div><div class="task-detail">reflect_check 自检; v4.1 (32位) + v6.1 (64位) 全量批量验证完成</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">并行检测优化</div><div class="task-detail">ProcessPoolExecutor 多核并行所有检测模式; bisect O(n log n) CFI 匹配; 索引先插后建</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">报告生成统一</div><div class="task-detail">report_utils.py 提取 generate_reports() 统一函数, 消除 4 处重复; Flask app.py 改为模板文件</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">tools.py 拆分</div><div class="task-detail">tools.py (1215行) → tools/ 包 (5 模块 815行): registry / detect_tools / query_tools / service_tools</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">32 位架构预检</div><div class="task-detail">BTI/PAC 检测前抽样检查架构, 32 位 ARM 直接返回"不适用"</div></div></li>
+    </ul>
+    <div class="milestone">
+        <div class="milestone-icon">target</div>
+        <div class="milestone-title">里程碑：完整检测 + Web 可视化 + 并行优化</div>
+        <div style="font-size: 0.88rem; color: var(--text-light);">核心管线 + 高级可视化 + 性能优化 均已完成</div>
+    </div>
+    <div class="tech-stack">
+        <span class="tech-tag">Flask 3.0</span>
+        <span class="tech-tag">ECharts 5.5</span>
+        <span class="tech-tag">openpyxl</span>
+        <span class="tech-tag">sqlite3 (6 表 7 索引)</span>
+        <span class="tech-tag">MCP</span>
+        <span class="tech-tag">ProcessPoolExecutor</span>
+        <span class="tech-tag">bisect</span>
+        <span class="tech-tag">cxxfilt</span>
+    </div>
+</div>
+
+<!-- Phase 4 -->
+<div class="phase p4">
+    <div class="phase-header">
+        <div>
+            <span class="phase-title">阶段四：Skill 封装与文档</span>
+            <span class="phase-status done">已完成</span>
+        </div>
+        <span class="phase-date">8月26日 — 8月28日</span>
+    </div>
+    <p class="phase-desc">CFI Agent 已封装为完整 Skill, GitHub 已开源, 答辩材料已上传。</p>
+    <ul class="task-list">
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">检测脚本封装</div><div class="task-detail">cfi.bat 一键启动, 自动安装依赖; pip install -e .</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">AI Agent Skill 定义</div><div class="task-detail">21 工具自动注册; 自然语言描述需求即可调度; 检测前列出工具清单</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">低性能 LLM 适配</div><div class="task-detail">propose_plan 先规划后执行; LLM 指数退避重试 (429/500/502/503); MCP sqlite 本地查询兜底</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">GitHub 开源</div><div class="task-detail">README.md + SKILL.md + knowledge/ 安全知识库 + 答辩材料</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">Agent 架构优化</div><div class="task-detail">MCP 资源泄漏修复; last_output_dir 查询自动定位; propose_plan 统一路径; SQL 注入防护; __main__ 守卫</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">完整文档编写</div><div class="task-detail">README + SKILL.md + knowledge/ 安全知识库 + docs/ 检测模式说明</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">课题总结</div><div class="task-detail">答辩 PPT + 答辩材料 + 面试问答</div></div></li>
+    </ul>
+    <div class="milestone">
+        <div class="milestone-icon">package</div>
+        <div class="milestone-title">里程碑：课题完成</div>
+        <div style="font-size: 0.88rem; color: var(--text-light);">课题已完成 ✓</div>
+    </div>
+    <div class="tech-stack">
+        <span class="tech-tag">opencode skill</span>
+        <span class="tech-tag">typer CLI</span>
+        <span class="tech-tag">rich console</span>
+        <span class="tech-tag">prompt_toolkit</span>
+        <span class="tech-tag">7 种 LLM 支持</span>
+        <span class="tech-tag">GitHub 开源</span>
+        <span class="tech-tag">答辩材料</span>
+    </div>
+</div>
+
+</div>
+
+<!-- Final Deliverables -->
+<h2 class="section-title">最终交付物</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 36px;">
+    <div style="background: var(--card-bg); border-radius: 14px; padding: 24px 20px; box-shadow: var(--shadow); text-align: center;">
+        <div style="font-size: 2rem; margin-bottom: 8px;">file</div>
+        <div style="font-size: 0.95rem; font-weight: 700;">统一检测引擎</div>
+        <div style="font-size: 0.82rem; color: var(--text-light); margin-top: 4px;">7 模式 / 5 维度 / 32位+64位 / 并行</div>
+    </div>
+    <div style="background: var(--card-bg); border-radius: 14px; padding: 24px 20px; box-shadow: var(--shadow); text-align: center;">
+        <div style="font-size: 2rem; margin-bottom: 8px;">globe</div>
+        <div style="font-size: 0.95rem; font-weight: 700;">Web 可视化</div>
+        <div style="font-size: 0.82rem; color: var(--text-light); margin-top: 4px;">交互式 HTML + 函数搜索 + Flask API</div>
+    </div>
+    <div style="background: var(--card-bg); border-radius: 14px; padding: 24px 20px; box-shadow: var(--shadow); text-align: center;">
+        <div style="font-size: 2rem; margin-bottom: 8px;">robot</div>
+        <div style="font-size: 0.95rem; font-weight: 700;">AI Agent</div>
+        <div style="font-size: 0.82rem; color: var(--text-light); margin-top: 4px;">21 工具 / 7 种 LLM / 自然语言交互</div>
+    </div>
+    <div style="background: var(--card-bg); border-radius: 14px; padding: 24px 20px; box-shadow: var(--shadow); text-align: center;">
+        <div style="font-size: 2rem; margin-bottom: 8px;">github</div>
+        <div style="font-size: 0.95rem; font-weight: 700;">开源 + 云部署</div>
+        <div style="font-size: 0.82rem; color: var(--text-light); margin-top: 4px;">GitHub 开源 + 答辩材料</div>
+    </div>
+    <div style="background: var(--card-bg); border-radius: 14px; padding: 24px 20px; box-shadow: var(--shadow); text-align: center;">
+        <div style="font-size: 2rem; margin-bottom: 8px;">book</div>
+        <div style="font-size: 0.95rem; font-weight: 700;">文档</div>
+        <div style="font-size: 0.82rem; color: var(--text-light); margin-top: 4px;">README + 原理说明 + 精度验证</div>
+    </div>
+</div>
+
+</div>
+
+<!-- Term Popups -->
+<div class="term-overlay" id="termOverlay" onclick="if(event.target===this)closeTerm()">
+    <div class="term-modal">
+        <div class="term-modal-header">
+            <span id="termTitle">术语解释</span>
+            <button class="term-modal-close" onclick="closeTerm()">&times;</button>
+        </div>
+        <div class="term-modal-body" id="termBody"></div>
+    </div>
+</div>
+
+<script>
+const TERM_DATA = {
+    'slowpath': {
+        title: '±48 字节 slowpath CFI 判定',
+        body: '<p>LLVM CFI 在每个间接调用（BLR 指令）前插入一段 <b>__cfi_slowpath</b> 调用，用于校验目标地址的类型哈希是否匹配。</p><p>检测方法：对每个 BLR 指令，在其前后 48 字节范围（约 12 条 AArch64 指令）内查找是否有 slowpath 调用。</p><div class="code">找到 slowpath 调用 → 该间接调用受 CFI 保护\n未找到          → 该间接调用未受保护</div><p>48 字节是编译器插入 slowpath 检查的典型代码窗口范围。vcall 和 icall 的保护检测方式完全相同。</p>'
+    },
+    'gnu_property': {
+        title: '.note.gnu.property 属性检查',
+        body: '<p>ELF 文件中的特殊段，用于声明二进制文件使用的 CPU 安全特性。在 AArch64 上包含两个标志位：</p><div class="code">FEATURE_1_PAC → 编译时开启了 PAC 支持\nFEATURE_1_BTI → 编译时开启了 BTI 支持</div><p>这是<b>第一层</b>检查（读一个标志位，毫秒级），快速判断 .so 是否声明了 PAC/BTI 支持。</p><p>声明了不代表覆盖率高——实际有多少函数入口加了 BTI 指令要靠后续的字节扫描和函数级扫描。</p>'
+    },
+    't_run_cfi_detection': {
+        title: 'run_cfi_detection',
+        body: '<p>完整 CFI 检测全流程：.so 级 + 函数级 + vcall + icall + PAC + BTI，生成 SQLite/HTML/Excel/Flask 全套报告。</p><p>支持 mode=full（完整）和 mode=fast（仅 .so 级）。</p>'
+    },
+    't_detect_so_level': {
+        title: 'detect_so_level',
+        body: '<p>只做 .so 级 CFI 检测（查 __cfi_check 符号），不扫函数/调用点，最快的摸底检测。</p><p>返回总数、CFI 开启数、未开启 .so 列表样本。</p>'
+    },
+    't_detect_functions': {
+        title: 'detect_functions',
+        body: '<p>函数级检测：对开启 CFI 的 .so 分类保护/基础设施/真正未保护函数。</p><p>返回保护函数数、未保护函数数、函数保护率。</p>'
+    },
+    't_detect_vcall': {
+        title: 'detect_vcall',
+        body: '<p>虚函数调用检测：.so 级 + 函数级 + vcall（虚函数间接调用点扫描）。</p><p>通过寄存器回溯判定 BLR 指令是虚函数调用（从 vtable 加载）还是普通间接调用。</p>'
+    },
+    't_detect_icall': {
+        title: 'detect_icall',
+        body: '<p>间接调用检测：.so 级 + 函数级 + icall（非虚函数间接调用点扫描）。</p><p>统计非虚函数间接调用的 CFI 覆盖率。</p>'
+    },
+    't_detect_pac': {
+        title: 'detect_pac',
+        body: '<p>PAC 返回地址签名/认证检测（AArch64 专属）。</p><p>扫描 PACIASP/PACIBSP（签名）和 AUTIASP/AUTIBSP/RETAA/RETAB（认证）指令，按函数分类为 protected/sign_only/no_pac。</p><p>32 位 ARM 自动跳过。</p>'
+    },
+    't_detect_bti': {
+        title: 'detect_bti',
+        body: '<p>BTI 分支目标标识检测（AArch64 专属）。</p><p>检查 .note.gnu.property 属性 + 扫描函数入口的 BTI 指令覆盖率。</p><p>32 位 ARM 自动跳过。</p>'
+    },
+    't_query_summary': {
+        title: 'query_summary',
+        body: '<p>查询 CFI 检测总体统计（来自 SQLite summary 表）。</p><p>含 .so 总数、CFI 开启数、保护函数数、vcall/icall 调用点与保护率、PAC/BTI 覆盖率等。</p>'
+    },
+    't_query_no_cfi_so': {
+        title: 'query_no_cfi_so',
+        body: '<p>查询未开启 CFI 的 .so 列表（cfi_enabled=0），可按模块过滤。</p>'
+    },
+    't_query_functions': {
+        title: 'query_functions',
+        body: '<p>查询某个 .so 的函数列表（按类型：protected/unprotected/infra）。</p><p>需要 so_id（来自模块查询）。</p>'
+    },
+    't_search_functions': {
+        title: 'search_functions',
+        body: '<p>按关键词模糊搜索函数名（LIKE 匹配），返回函数名、类型、所属 .so 路径与模块。</p><p>用于查找特定函数是否受 CFI 保护。</p>'
+    },
+    't_query_modules': {
+        title: 'query_modules',
+        body: '<p>查询所有模块的 CFI 覆盖概览（模块名、说明、.so 总数、CFI 开启数、覆盖率），按覆盖率降序。</p>'
+    },
+    't_query_sql': {
+        title: 'query_sql',
+        body: '<p>对检测结果数据库执行任意只读 SQL 查询（仅 SELECT，最多 200 行）。</p><p>可用表：summary, modules, so_files, name_table, so_functions。</p>'
+    },
+    't_regenerate_report': {
+        title: 'regenerate_report',
+        body: '<p>重新生成报告文件（不重跑检测）。支持 html（前端页面）和 app（Flask API）。</p>'
+    },
+    't_start_service': {
+        title: 'start_report_service',
+        body: '<p>后台启动 Flask 报告 Web 服务（端口 5000）。</p><p>启动后可双击 index.html 或访问 http://127.0.0.1:5000。</p>'
+    },
+    't_stop_service': {
+        title: 'stop_report_service',
+        body: '<p>停止后台 Flask 报告服务（杀掉占用 5000 端口的进程）。</p>'
+    },
+    't_propose_plan': {
+        title: 'propose_plan',
+        body: '<p>对检测类任务先提出执行计划供用户确认，再执行。</p><p>用户确认后 Agent 才依次调用工具执行。简单查询可直接执行，不必先规划。</p>'
+    },
+    't_reflect_check': {
+        title: 'reflect_check',
+        body: '<p>反思自检：对检测结果做合理性校验。</p><p>检查 so 总数一致性、保护率范围、有调用点却无保护等异常，发现异常向用户提示。</p>'
+    },
+    't_list_history': {
+        title: 'list_history',
+        body: '<p>列出历史检测存档（所有检测类型统一存到 output/history/）。</p><p>每个存档含检测类型、时间、.so 总数、CFI 开启数。</p>'
+    },
+    't_compare_changes': {
+        title: 'compare_changes',
+        body: '<p>对比两次检测的变化，支持跨检测类型对比。</p><p>自动取两快照都有的维度（如 so_level 对 full 只比 .so CFI 状态）。检测 .so 的 CFI 开关变化、新增/移除 .so。</p>'
+    },
+    't_generate_changes_excel': {
+        title: 'generate_changes_excel',
+        body: '<p>从 changes 表生成 CFI 变化对照 Excel。</p><p>支持开启 CFI（绿）/关闭 CFI（红）/新增 .so（蓝）/移除 .so（红）四种变化类型。</p>'
+    },
+    'detect_modes': {
+        title: '7 种检测模式及耗时',
+        body: '<p>对 OpenHarmony v6.1 (2953 .so, AArch64) 全量检测，并行模式：</p><table style="width:100%; border-collapse: collapse; margin: 10px 0;"><thead><tr style="background:#FAFAFA;"><th style="padding:8px 12px; text-align:left; border:1px solid #E0E0E0; font-size:0.82rem;">检测模式</th><th style="padding:8px 12px; text-align:center; border:1px solid #E0E0E0; font-size:0.82rem;">检测内容</th><th style="padding:8px 12px; text-align:center; border:1px solid #E0E0E0; font-size:0.82rem;">耗时</th></tr></thead><tbody><tr><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-weight:600;">.so 级检测</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem; text-align:center;">仅查 CFI 开关</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; text-align:center; color:#059669; font-weight:600;">26 秒</td></tr><tr style="background:#FAFAFA;"><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-weight:600;">函数级检测</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem; text-align:center;">+ 函数分类</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; text-align:center; color:#2563eb; font-weight:600;">1 分 24 秒</td></tr><tr><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-weight:600;">vcall 检测</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem; text-align:center;">+ 虚函数调用</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; text-align:center; color:#2563eb; font-weight:600;">1 分 23 秒</td></tr><tr style="background:#FAFAFA;"><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-weight:600;">icall 检测</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem; text-align:center;">+ 间接调用</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; text-align:center; color:#2563eb; font-weight:600;">1 分 26 秒</td></tr><tr><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-weight:600;">PAC 检测</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem; text-align:center;">+ 返回地址签名</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; text-align:center; color:#d97706; font-weight:600;">2 分钟</td></tr><tr style="background:#FAFAFA;"><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-weight:600;">BTI 检测</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem; text-align:center;">+ 分支目标标识</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; text-align:center; color:#d97706; font-weight:600;">2 分 4 秒</td></tr><tr style="background:#FAFAFA;"><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-weight:700;">完整检测</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem; text-align:center; font-weight:600;">全维度 (上述全部)</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; text-align:center; color:#dc2626; font-weight:700;">2 分 21 秒</td></tr></tbody></table><p style="font-size:0.78rem; color:var(--text-light); margin-top:8px;">测试环境：2953 个 .so，AArch64 架构，OpenHarmony v6.1，ProcessPoolExecutor 并行检测</p>'
+    },
+    'sqlite_tables': {
+        title: 'SQLite 6 张表',
+        body: '<p>检测结果存储在 SQLite 数据库中，包含 6 张表：</p><table style="width:100%; border-collapse: collapse; margin: 10px 0;"><thead><tr style="background:#FAFAFA;"><th style="padding:8px 12px; text-align:left; border:1px solid #E0E0E0; font-size:0.82rem;">表名</th><th style="padding:8px 12px; text-align:left; border:1px solid #E0E0E0; font-size:0.82rem;">内容</th><th style="padding:8px 12px; text-align:center; border:1px solid #E0E0E0; font-size:0.82rem;">行数级</th></tr></thead><tbody><tr><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-weight:600;">summary</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">检测总体统计（.so 总数、CFI 开启数、各维度覆盖率）</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; text-align:center;">1 行</td></tr><tr style="background:#FAFAFA;"><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-weight:600;">modules</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">按模块聚合的统计（模块名、说明、.so 数、各维度计数）</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; text-align:center;">~54 行</td></tr><tr><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-weight:600;">so_files</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">每个 .so 的详细数据（路径、CFI 状态、函数计数、PAC/BTI 计数）</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; text-align:center;">~2953 行</td></tr><tr style="background:#FAFAFA;"><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-weight:600;">name_table</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">去重后的 demangled 函数名表（函数搜索的基础）</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; text-align:center;">~百万级</td></tr><tr><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-weight:600;">so_functions</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">函数与 .so 的关联（so_id + 函数名索引 + 分类 + mangled_count）</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; text-align:center;">~百万级</td></tr><tr style="background:#FAFAFA;"><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-weight:600;">snapshot_meta</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">检测快照元数据（检测类型、时间、各维度是否包含）</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; text-align:center;">1 行</td></tr></tbody></table><p style="font-size:0.78rem; color:var(--text-light); margin-top:8px;">通过 query_sql 工具可对任意表执行只读 SELECT 查询，MCP sqlite_server 也直接查询这些表。</p>'
+    },
+    'sqlite_indexes': {
+        title: 'SQLite 7 个索引',
+        body: '<p>为加速查询在关键列上创建的 B-tree 索引：</p><table style="width:100%; border-collapse: collapse; margin: 10px 0;"><thead><tr style="background:#FAFAFA;"><th style="padding:8px 12px; text-align:left; border:1px solid #E0E0E0; font-size:0.82rem;">索引名</th><th style="padding:8px 12px; text-align:left; border:1px solid #E0E0E0; font-size:0.82rem;">表.列</th><th style="padding:8px 12px; text-align:left; border:1px solid #E0E0E0; font-size:0.82rem;">加速的查询</th></tr></thead><tbody><tr><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-family:monospace;">idx_sf_so</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">so_functions.so_id</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">查询某 .so 的函数列表</td></tr><tr style="background:#FAFAFA;"><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-family:monospace;">idx_sf_type</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">so_functions.func_type</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">按类型过滤函数（protected/unprotected）</td></tr><tr><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-family:monospace;">idx_fid</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">so_functions.func_id</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">按函数名查找出现在哪些 .so 中</td></tr><tr style="background:#FAFAFA;"><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-family:monospace;">idx_so_module</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">so_files.module</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">按模块筛选 .so</td></tr><tr><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-family:monospace;">idx_so_path</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">so_files.path</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">data.js 生成时读取 so_id</td></tr><tr style="background:#FAFAFA;"><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-family:monospace;">idx_so_cfi</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">so_files.cfi_enabled</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">查询未开启 CFI 的 .so</td></tr><tr><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.82rem; font-family:monospace;">idx_nt_name</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">name_table.name</td><td style="padding:8px 12px; border:1px solid #E0E0E0; font-size:0.78rem;">函数名搜索（function_locations API）</td></tr></tbody></table><p style="font-size:0.78rem; color:var(--text-light); margin-top:8px;">索引在数据全部插入后一次性创建（先插后建），比边插边建快 10 倍以上。</p>'
+    }
+};
+
+function showTerm(key) {
+    const data = TERM_DATA[key];
+    if (!data) return;
+    document.getElementById('termTitle').textContent = data.title;
+    document.getElementById('termBody').innerHTML = data.body;
+    document.getElementById('termOverlay').classList.add('active');
+}
+
+function closeTerm() {
+    document.getElementById('termOverlay').classList.remove('active');
+}
+</script>
+
+<div class="footer">
+    <p>OpenHarmony CFI 检测 Agent 课题计划（v3 更新版）</p>
+    <p>2026年7月1日 — 2026年8月28日 | OpenHarmony v4.1 + v6.1 | rk3568 | 前向 CFI (LLVM CFI + BTI) + 后向 CFI (PAC) | 并行检测 + 云部署</p>
+</div>
+
+</body>
+</html>
