@@ -1,32 +1,18 @@
 # CFI Agent 配置 — 改完重启 agent 生效
+# 首次运行 cfi.bat 会自动引导选择大模型并输入 API Key
 
 llm:
   # 模型字符串带 provider 前缀，换模型只改这里 + 对应 .env 的 key
-  # 示例：openai/gpt-4o-mini | anthropic/claude-3-5-sonnet-20240620 | dashscope/qwen-plus | deepseek/deepseek-chat
-  model: zhipu/glm-4
-  # 可选：OpenAI 兼容端点（如本地 vllm/ollama 的 openai 接口）
-  # base_url: http://localhost:8000/v1
+  # 首次运行会自动弹出选择列表，选完自动写入此处
+  # 可选：openai/gpt-4o-mini | deepseek/deepseek-chat | qwen/qwen-plus | zhipu/glm-4 | moonshot/moonshot-v1-8k | ollama
+  model: deepseek/deepseek-chat
   temperature: 0.3
 
 defaults:
-  # 默认检测输入目录与输出目录，命令行未指定时用此
-  # 请把 lib_dir 改成你的 lib.unstripped 路径（未 strip 的 .so 集合）
-  # 例如 D:/openharmony/out/rk3568/lib.unstripped
+  # 默认检测输入目录（未 strip 的 .so 集合路径）
+  # 留空则在对话中手动指定，如"对 E:/xxx 做检测"
   lib_dir: ""
-  output_dir: ./output  # 结果输出目录（相对项目根，运行时自动创建）
-
-mcp:
-  sqlite:
-    enabled: true
-    # 轻量 sqlite MCP server，运行时把 output_dir/cfi_detection.sqlite 接入
-    type: local
-    command: ["python", "-m", "cfi_agent.mcp_servers.sqlite_server"]
-    # db 路径在运行时注入，此处可留空
-    env: {}
+  output_dir: ./output
 
 skills:
   paths: ["skills"]
-
-references:
-  - path: E:/lib.unstripped_4.1
-    description: "默认 CFI 检测输入：未 strip 的 .so 集合（ARM 32-bit Thumb）"
