@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenHarmony CFI 检测 Agent 课题计划（更新版）</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-light: #60a5fa;
+            --primary-dark: #1e40af;
+            --secondary: #7c3aed;
+            --success: #10b981;
+            --success-light: #6ee7b7;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --bg: #f1f5f9;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --text-light: #64748b;
+            --border: #e2e8f0;
+            --shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+
+        .hero { background: linear-gradient(135deg, #1e1b4b 0%, #312e81 30%, #4338ca 60%, #7c3aed 100%); color: white; padding: 56px 20px; text-align: center; position: relative; overflow: hidden; }
+        .hero::before { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 60%); animation: rotate 30s linear infinite; }
+        @keyframes rotate { to { transform: rotate(360deg); } }
+        .hero h1 { font-size: 2.2rem; margin-bottom: 8px; position: relative; z-index: 1; }
+        .hero .subtitle { font-size: 1.1rem; opacity: 0.9; position: relative; z-index: 1; }
+        .hero .meta { display: inline-flex; gap: 20px; margin-top: 22px; position: relative; z-index: 1; flex-wrap: wrap; justify-content: center; }
+        .hero .meta-item { background: rgba(255,255,255,0.15); padding: 7px 18px; border-radius: 50px; backdrop-filter: blur(10px); font-size: 0.9rem; }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 36px 20px; }
+
+        .section-title { font-size: 1.6rem; font-weight: 700; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 3px solid var(--primary); display: flex; align-items: center; gap: 10px; }
+
+        .progress-section { background: var(--card-bg); border-radius: 14px; padding: 28px; margin-bottom: 32px; box-shadow: var(--shadow); }
+        .progress-bar-container { height: 12px; background: #e2e8f0; border-radius: 6px; overflow: hidden; margin: 12px 0; }
+        .progress-bar { height: 100%; background: linear-gradient(90deg, var(--success), var(--primary), var(--secondary)); border-radius: 6px; transition: width 1s ease; }
+        .progress-label { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-light); }
+
+        .arch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 36px; }
+        @media (max-width: 768px) { .arch-grid { grid-template-columns: 1fr; } }
+        .arch-card { background: var(--card-bg); border-radius: 14px; padding: 24px; box-shadow: var(--shadow); border-top: 4px solid var(--primary); }
+        .arch-card.pac { border-top-color: var(--secondary); }
+        .arch-card h3 { font-size: 1.1rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+        .arch-card .file-path { font-size: 0.8rem; color: var(--text-light); font-family: monospace; margin-bottom: 14px; background: #f8fafc; padding: 4px 8px; border-radius: 4px; display: inline-block; }
+        .layer-list { list-style: none; }
+        .layer-item { padding: 8px 0; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 10px; }
+        .layer-item:last-child { border-bottom: none; }
+        .layer-badge { font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; color: white; flex-shrink: 0; margin-top: 2px; }
+        .layer-badge.l1 { background: var(--success); }
+        .layer-badge.l2 { background: var(--primary); }
+        .layer-badge.l3 { background: var(--warning); }
+        .layer-badge.l4 { background: var(--secondary); }
+        .layer-badge.l5 { background: var(--danger); }
+        .layer-name { font-weight: 600; font-size: 0.9rem; }
+        .layer-desc { font-size: 0.82rem; color: var(--text-light); margin-top: 2px; }
+        .tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin-top: 10px; }
+        .tool-chip { background: #eff6ff; border: 1px solid #bfdbfe; padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; color: var(--primary-dark); text-align: center; }
+        .tool-chip.query { background: #f0fdf4; border-color: #bbf7d0; color: #065f46; }
+        .tool-chip.report { background: #fef3c7; border-color: #fde68a; color: #92400e; }
+
+        .timeline { position: relative; padding-left: 44px; }
+        .timeline::before { content: ''; position: absolute; left: 18px; top: 0; bottom: 0; width: 4px; background: linear-gradient(to bottom, var(--success), var(--primary), var(--warning), var(--text-light)); border-radius: 2px; }
+
+        .phase { background: var(--card-bg); border-radius: 14px; padding: 26px; margin-bottom: 24px; box-shadow: var(--shadow); position: relative; transition: transform 0.2s; }
+        .phase:hover { transform: translateX(4px); }
+        .phase::before { content: ''; position: absolute; left: -34px; top: 26px; width: 18px; height: 18px; border-radius: 50%; background: var(--card-bg); border: 4px solid var(--success); z-index: 1; }
+        .phase.p2::before { border-color: var(--primary); }
+        .phase.p3::before { border-color: var(--warning); }
+        .phase.p4::before { border-color: var(--text-light); }
+
+        .phase-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+        .phase-title { font-size: 1.2rem; font-weight: 700; }
+        .phase-date { background: var(--success); color: white; padding: 3px 14px; border-radius: 50px; font-size: 0.82rem; white-space: nowrap; }
+        .phase.p2 .phase-date { background: var(--primary); }
+        .phase.p3 .phase-date { background: var(--warning); }
+        .phase.p4 .phase-date { background: var(--text-light); }
+
+        .phase-status { font-size: 0.78rem; padding: 2px 10px; border-radius: 50px; font-weight: 600; margin-left: 8px; }
+        .phase-status.done { background: #d1fae5; color: #065f46; }
+        .phase-status.active { background: #dbeafe; color: #1e40af; }
+        .phase-status.partial { background: #fef3c7; color: #92400e; }
+        .phase-status.todo { background: #f1f5f9; color: #64748b; }
+
+        .phase-desc { color: var(--text-light); margin-bottom: 16px; font-size: 0.92rem; }
+        .task-list { list-style: none; }
+        .task-item { padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 10px; }
+        .task-item:last-child { border-bottom: none; }
+        .task-icon { width: 22px; height: 22px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 0.68rem; font-weight: 700; color: white; flex-shrink: 0; margin-top: 2px; }
+        .task-icon.done { background: var(--success); }
+        .task-icon.active { background: var(--primary); }
+        .task-icon.partial { background: var(--warning); }
+        .task-icon.todo { background: var(--text-light); }
+        .task-content { flex: 1; }
+        .task-title-text { font-weight: 600; font-size: 0.92rem; }
+        .task-detail { font-size: 0.82rem; color: var(--text-light); margin-top: 2px; }
+
+        .deliverables { margin-top: 16px; padding: 14px; background: #f8fafc; border-radius: 10px; border-left: 4px solid var(--success); }
+        .deliverables-title { font-size: 0.82rem; font-weight: 700; color: var(--success); margin-bottom: 6px; }
+        .deliverables ul { padding-left: 18px; }
+        .deliverables li { font-size: 0.82rem; color: var(--text-light); margin: 3px 0; }
+
+        .tech-stack { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+        .tech-tag { background: #f1f5f9; border: 1px solid var(--border); padding: 3px 10px; border-radius: 50px; font-size: 0.78rem; color: var(--text-light); }
+
+        .milestone { background: linear-gradient(135deg, #f0f4ff 0%, #faf5ff 100%); border: 2px solid var(--primary-light); border-radius: 10px; padding: 16px; margin: 16px 0; text-align: center; }
+        .milestone-icon { font-size: 1.8rem; }
+        .milestone-title { font-weight: 700; margin: 6px 0; font-size: 1rem; }
+
+        .stat-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 14px 0; }
+        .stat-box { background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; text-align: center; flex: 1; min-width: 100px; }
+        .stat-box .num { font-size: 1.5rem; font-weight: 800; color: var(--primary); }
+        .stat-box .lbl { font-size: 0.78rem; color: var(--text-light); margin-top: 2px; }
+        .stat-box.green .num { color: var(--success); }
+        .stat-box.purple .num { color: var(--secondary); }
+
+        .footer { text-align: center; padding: 36px 20px; color: var(--text-light); font-size: 0.88rem; }
+    </style>
+</head>
+<body>
+
+<div class="hero">
+    <h1>OpenHarmony CFI 检测 Agent</h1>
+    <p class="subtitle">前向 CFI (LLVM CFI + BTI) + 后向 CFI (PAC) — AI 驱动的控制流完整性自动化检测与可视化系统</p>
+    <div class="meta">
+        <span class="meta-item">2026.07.01 — 2026.09.01</span>
+        <span class="meta-item">rk3568 | OpenHarmony v4.1</span>
+        <span class="meta-item">ARM 32-bit Thumb + AArch64</span>
+    </div>
+</div>
+
+<div class="container">
+
+<!-- Progress -->
+<div class="progress-section">
+    <h2 style="margin-bottom: 8px;">整体进度</h2>
+    <p style="color: var(--text-light); font-size: 0.9rem; margin-bottom: 8px;">阶段一已完成，阶段二基本完成（仅单 .so 验证，待批量），阶段三核心管线已建成、高级可视化进行中，阶段四 Skill 已封装、文档待补</p>
+    <div class="progress-bar-container">
+        <div class="progress-bar" style="width: 62%;"></div>
+    </div>
+    <div class="progress-label">
+        <span>7月1日 开始</span>
+        <span style="color: var(--success); font-weight: 600;">当前: 7月31日 (62%)</span>
+        <span>9月1日 截止</span>
+    </div>
+</div>
+
+<!-- Architecture Overview -->
+<h2 class="section-title">已建成系统架构</h2>
+
+<div class="arch-grid">
+    <!-- CFI Agent -->
+    <div class="arch-card">
+        <h3>CFI Agent（前向 CFI 检测）</h3>
+        <div class="file-path">E:\cfi_agent\ — LLM 驱动、MCP 集成、CLI 交互</div>
+        <div style="font-size: 0.8rem; color: var(--danger); background: #fef2f2; padding: 6px 12px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #fecaca;">
+            验证状态：ARM 32-bit Thumb 已对 lib.unstripped/ 全量验证; AArch64 支持仅对单个 .so 验证，尚未批量验证
+        </div>
+
+        <div class="stat-row">
+            <div class="stat-box green"><div class="num">19</div><div class="lbl">Agent 工具</div></div>
+            <div class="stat-box"><div class="num">21</div><div class="lbl">检测函数</div></div>
+            <div class="stat-box purple"><div class="num">3</div><div class="lbl">检测层级</div></div>
+        </div>
+
+        <ul class="layer-list">
+            <li class="layer-item">
+                <span class="layer-badge l1">.so</span>
+                <div><div class="layer-name">.so 文件级</div><div class="layer-desc">check_cfi_enabled — 检测 __cfi_check 符号是否已定义 (st_value != 0)</div></div>
+            </li>
+            <li class="layer-item">
+                <span class="layer-badge l2">FN</span>
+                <div><div class="layer-name">函数级分类</div><div class="layer-desc">classify_functions — func.cfi → 受保护; __cfi* → 基础设施; 无 .cfi → 真正未保护</div></div>
+            </li>
+            <li class="layer-item">
+                <span class="layer-badge l3">CALL</span>
+                <div><div class="layer-name">调用点级 (vcall + icall)</div><div class="layer-desc">scan_call_sites — 自动识别 ARM Thumb / AArch64; BLR + LDR vcall 判定; ±48 字节 slowpath CFI 判定</div></div>
+            </li>
+        </ul>
+
+        <div style="margin-top: 12px;">
+            <div style="font-size: 0.82rem; font-weight: 600; margin-bottom: 6px; color: var(--text);">Agent 工具 (19 个):</div>
+            <div class="tool-grid">
+                <div class="tool-chip">run_cfi_detection</div>
+                <div class="tool-chip">detect_so_level</div>
+                <div class="tool-chip">detect_functions</div>
+                <div class="tool-chip">detect_vcall</div>
+                <div class="tool-chip">detect_icall</div>
+                <div class="tool-chip query">query_summary</div>
+                <div class="tool-chip query">query_no_cfi_so</div>
+                <div class="tool-chip query">query_functions</div>
+                <div class="tool-chip query">search_functions</div>
+                <div class="tool-chip query">query_modules</div>
+                <div class="tool-chip query">query_sql</div>
+                <div class="tool-chip report">regenerate_report</div>
+                <div class="tool-chip report">start_report_service</div>
+                <div class="tool-chip report">stop_report_service</div>
+                <div class="tool-chip">propose_plan</div>
+                <div class="tool-chip">reflect_check</div>
+                <div class="tool-chip">list_history</div>
+                <div class="tool-chip">compare_changes</div>
+                <div class="tool-chip">generate_changes_excel</div>
+            </div>
+        </div>
+
+        <div style="margin-top: 14px;">
+            <div style="font-size: 0.82rem; font-weight: 600; margin-bottom: 6px;">输出产物:</div>
+            <div class="tech-stack">
+                <span class="tech-tag">SQLite (5 表 3 索引)</span>
+                <span class="tech-tag">HTML (ECharts 饼图)</span>
+                <span class="tech-tag">Excel (4 Sheet)</span>
+                <span class="tech-tag">Flask API (端口 5000)</span>
+                <span class="tech-tag">.bat 启停脚本</span>
+                <span class="tech-tag">历史对比</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- PAC/BTI Detector -->
+    <div class="arch-card pac">
+        <h3>PAC + BTI 检测脚本（后向 PAC + 前向 BTI）</h3>
+        <div class="file-path">E:\检测脚本64位\pac_detector.py — 五层检测、零外部依赖 ELF64 解析</div>
+        <div style="font-size: 0.8rem; color: var(--danger); background: #fef2f2; padding: 6px 12px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #fecaca;">
+            验证状态：仅对 libaccount_iam_innerkits.z.so 单个 .so 验证，尚未对 lib.unstripped/ 全量编译产物批量验证
+        </div>
+
+        <div class="stat-row">
+            <div class="stat-box purple"><div class="num">5</div><div class="lbl">检测层级</div></div>
+            <div class="stat-box green"><div class="num">762</div><div class="lbl">PAC 点位</div></div>
+            <div class="stat-box"><div class="num">4</div><div class="lbl">BTI 函数</div></div>
+        </div>
+
+        <ul class="layer-list">
+            <li class="layer-item">
+                <span class="layer-badge l1">L1</span>
+                <div><div class="layer-name">.note.gnu.property 属性</div><div class="layer-desc">解析 GNU property note, 检查 FEATURE_1_PAC / FEATURE_1_BTI flag</div></div>
+            </li>
+            <li class="layer-item">
+                <span class="layer-badge l2">L2</span>
+                <div><div class="layer-name">Capstone 全量反汇编</div><div class="layer-desc">26 种 PAC 助记符 + BTI 助记符; 按 section 统计, 带地址和操作数</div></div>
+            </li>
+            <li class="layer-item">
+                <span class="layer-badge l3">L3</span>
+                <div><div class="layer-name">字节模式扫描</div><div class="layer-desc">HINT imm7 匹配 (PAC 25-31, BTI 32/34/36/38) + RETAA/RETAB 字节匹配</div></div>
+            </li>
+            <li class="layer-item">
+                <span class="layer-badge l4">L4</span>
+                <div><div class="layer-name">BTI 函数覆盖率</div><div class="layer-desc">读 .symtab, 检查每个函数入口首指令是否为 BTI; 输出覆盖率 + 无 BTI 函数样本</div></div>
+            </li>
+            <li class="layer-item">
+                <span class="layer-badge l5">L5</span>
+                <div><div class="layer-name">PAC 函数级分析</div><div class="layer-desc">按函数范围扫描 PAC 签名(PACIBSP) + 认证(AUTIBSP/RETAA/RETAB); 分类: protected / sign_only / no_pac</div></div>
+            </li>
+        </ul>
+
+        <div style="margin-top: 12px;">
+            <div style="font-size: 0.82rem; font-weight: 600; margin-bottom: 6px;">实测结果 (libaccount_iam_innerkits.z.so):</div>
+            <div class="tech-stack">
+                <span class="tech-tag" style="background:#dbeafe;color:#1e40af;">PAC 覆盖: 66.1%</span>
+                <span class="tech-tag" style="background:#f3e8ff;color:#6b21a8;">PACIBSP x267</span>
+                <span class="tech-tag" style="background:#f3e8ff;color:#6b21a8;">AUTIBSP x299</span>
+                <span class="tech-tag" style="background:#fef3c7;color:#92400e;">BTI 覆盖: 0.9%</span>
+                <span class="tech-tag" style="background:#fef3c7;color:#92400e;">BTI c x4</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Timeline -->
+<h2 class="section-title">项目时间线</h2>
+<div class="timeline">
+
+<!-- Phase 1 -->
+<div class="phase">
+    <div class="phase-header">
+        <div>
+            <span class="phase-title">阶段一：环境搭建与 CFI 基础</span>
+            <span class="phase-status done">已完成</span>
+        </div>
+        <span class="phase-date">7月1日 — 7月14日</span>
+    </div>
+    <p class="phase-desc">OpenHarmony 源码获取、编译环境搭建、rk3568 编译烧录、CFI 基础学习与反汇编分析。</p>
+    <ul class="task-list">
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">源码获取与环境搭建</div><div class="task-detail">VMware + Ubuntu 20.04, FileZilla/Samba 传输, hb/build.sh 编译 rk3568</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">烧录到 rk3568 开发板</div><div class="task-detail">Rockchip 烧录工具, 完整系统镜像</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">CFI 基础知识学习</div><div class="task-detail">前向/后向 CFI 原理, 类型哈希, 跳转表, 间接调用检查, 跨 DSO 校验, strip 影响</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">CFI 反汇编分析</div><div class="task-detail">__cfi_check 入口, __cfi_check_fail, .cfi 后缀插桩函数, CFI 影子区 trap 填充, blocklist 对比</div></div></li>
+    </ul>
+    <div class="deliverables">
+        <div class="deliverables-title">阶段交付物</div>
+        <ul>
+            <li>可运行的 rk3568 OpenHarmony 设备 + 完整编译产物</li>
+            <li>CFI 反汇编分析文档</li>
+        </ul>
+    </div>
+</div>
+
+<!-- Phase 2 -->
+<div class="phase p2">
+    <div class="phase-header">
+        <div>
+            <span class="phase-title">阶段二：检测方法研究与 Agent 实现</span>
+            <span class="phase-status done">基本完成</span>
+        </div>
+        <span class="phase-date">7月15日 — 7月28日</span>
+    </div>
+    <p class="phase-desc">原计划为"研究检测方法"，实际已直接完成 CFI Agent 全流程实现 + PAC/BTI 五层检测脚本。前向 CFI (LLVM CFI + BTI) 与后向 CFI (PAC) 均已覆盖, 但仅对单个 .so 验证, 尚未批量验证。</p>
+    <ul class="task-list">
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">CFI 技术体系研究</div><div class="task-detail">前向 CFI: LLVM -fsanitize=cfi (类型哈希+slowpath) 保护间接调用; BTI (分支目标标识) 保护间接分支目标; 后向 CFI: ARM PAC (签名/认证返回地址) 防 ROP</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">用户态 CFI 配置分析</div><div class="task-detail">全局开关 + 逐组件 opt-in, cfi_cross_dso, blocklist, 调试模式</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">目标架构分析</div><div class="task-detail">32 位用户态 (ARM Thumb) + 64 位 AArch64 混合架构; 两种指令集均已支持</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">前向 CFI 检测 — .so 级 + 函数级 + 调用点级</div><div class="task-detail">check_cfi_enabled (__cfi_check 符号); classify_functions (.cfi 后缀分类); scan_call_sites (vcall/icall + slowpath CFI 判定)</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">AArch64 指令解码</div><div class="task-detail">decode_aarch64_bl (BL 目标), is_aarch64_blr (BLR 寄存器), is_aarch64_ldr_mem (LDR 多变体); find_slowpath_plt 支持 .rela.plt</div></div></li>
+        <li class="task-item"><div class="task-icon partial">&#9680;</div><div class="task-content"><div class="task-title-text">后向 CFI 检测 — PAC 返回地址保护</div><div class="task-detail">pac_detector.py L1-L3+L5: PACIASP/PACIBSP (签名) + AUTIASP/AUTIBSP/RETAA/RETAB (认证); 函数级 sign/auth/protected 分类; 仅单 .so 验证, 待批量</div></div></li>
+        <li class="task-item"><div class="task-icon partial">&#9680;</div><div class="task-content"><div class="task-title-text">前向 CFI 检测 — BTI 分支目标标识</div><div class="task-detail">pac_detector.py L1-L4: .note.gnu.property BTI flag + HINT 字节扫描 + 函数入口覆盖率; 仅单 .so 验证, 待批量</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">CFI 运行时分析与覆盖率验证</div><div class="task-detail">reflect_check 自检工具 (字段一致性/保护率范围); capstone 交叉验证 (BL/BLR/LDR 计数一致)</div></div></li>
+        <li class="task-item"><div class="task-icon partial">&#9680;</div><div class="task-content"><div class="task-title-text">blocklist 豁免函数分析</div><div class="task-detail">原理已理解, 对比检测方法待实现</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">CFI 与 PAC/BTI 协同分析</div><div class="task-detail">前向 CFI: LLVM CFI (类型哈希+slowpath) + BTI (分支目标标识); 后向 CFI: PAC (返回地址签名/认证); 两者独立检测, 互补覆盖</div></div></li>
+    </ul>
+    <div class="deliverables">
+        <div class="deliverables-title">阶段交付物</div>
+        <ul>
+            <li>CFI Agent (19 工具, LLM 驱动, 自然语言交互)</li>
+            <li>pac_detector.py (5 层 PAC + BTI 检测, 零外部依赖 ELF64 解析)</li>
+            <li>AArch64 指令解码 (BL/BLR/LDR + .rela.plt)</li>
+            <li>3 级 CFI 检测 (.so 级 / 函数级 / 调用点级)</li>
+        </ul>
+    </div>
+    <div class="tech-stack">
+        <span class="tech-tag">pyelftools</span>
+        <span class="tech-tag">capstone 5.0</span>
+        <span class="tech-tag">struct (ELF64 parser)</span>
+        <span class="tech-tag">AArch64 BL/BLR/LDR</span>
+        <span class="tech-tag">ARM Thumb BL/BLX</span>
+        <span class="tech-tag">.rela.plt</span>
+        <span class="tech-tag">HINT imm7</span>
+        <span class="tech-tag">RETAA/RETAB</span>
+    </div>
+</div>
+
+<!-- Phase 3 -->
+<div class="phase p3">
+    <div class="phase-header">
+        <div>
+            <span class="phase-title">阶段三：Web 可视化与高级检测</span>
+            <span class="phase-status partial">核心已完成, 高级功能进行中</span>
+        </div>
+        <span class="phase-date">7月29日 — 8月25日</span>
+    </div>
+    <p class="phase-desc">检测管线与基础报告已建成 (SQLite/HTML/Excel/Flask), 高级可视化 (交互式表格、函数级页面、配置展示) 与 blocklist/LLVM IR 分析待完成。</p>
+    <ul class="task-list">
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">检测管线 (run_full_pipeline)</div><div class="task-detail">一键: 检测 → SQLite → HTML → Excel → Flask → .bat, 支持 full/fast 模式</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">SQLite 数据库</div><div class="task-detail">5 表 (summary/modules/so_files/name_table/so_functions) + 3 索引; MCP sqlite 工具集成</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">HTML 报告 (ECharts)</div><div class="task-detail">总体统计卡片 + 模块列表 (折叠展开) + 饼图覆盖率 + fetch 懒加载</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">Excel 报告 (4 Sheet)</div><div class="task-detail">总体统计 / 模块与.so详情 (分组折叠) / 无CFI的.so (标红) / 预编译厂商库</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">Flask REST API</div><div class="task-detail">端口 5000, CORS 全开, /api/summary /api/modules /api/query</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">历史对比与变化报告</div><div class="task-detail">list_history → compare_changes → generate_changes_excel (开启CFI绿/关闭CFI红)</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">预编译厂商库检测</div><div class="task-detail">VENDOR_LIBS 常量: libmali-bifrost / librga / librockchip_mpp / librkaiq</div></div></li>
+        <li class="task-item"><div class="task-icon partial">&#9680;</div><div class="task-content"><div class="task-title-text">检测精度验证</div><div class="task-detail">reflect_check 自检 + capstone 交叉验证已完成; 仅对单个 .so 验证, 需对 lib.unstripped/ 全量批量验证</div></div></li>
+        <li class="task-item"><div class="task-icon todo">&#9711;</div><div class="task-content"><div class="task-title-text">PAC/BTI 批量验证</div><div class="task-detail">对实际编译产物 lib.unstripped/ (AArch64) 全量 .so 运行 pac_detector.py, 验证 5 层检测在真实数据上的正确性和性能</div></div></li>
+        <li class="task-item"><div class="task-icon todo">&#9711;</div><div class="task-content"><div class="task-title-text">CFI Agent AArch64 批量验证</div><div class="task-detail">对 AArch64 lib.unstripped/ 全量 .so 运行 cfi_agent, 验证 vcall/icall 检测在真实数据上的正确性</div></div></li>
+        <li class="task-item"><div class="task-icon todo">&#9711;</div><div class="task-content"><div class="task-title-text">blocklist 豁免函数对比检测</div><div class="task-detail">对比有/无 blocklist 编译的 .so 反汇编, 识别被豁免 CFI 检查的函数</div></div></li>
+        <li class="task-item"><div class="task-icon todo">&#9711;</div><div class="task-content"><div class="task-title-text">LLVM IR 分析</div><div class="task-detail">bitcode → LLVM IR, 展示 type.test + 慢路径调用插桩模式</div></div></li>
+        <li class="task-item"><div class="task-icon todo">&#9711;</div><div class="task-content"><div class="task-title-text">交互式文件列表 (DataTable)</div><div class="task-detail">可分页/搜索/排序的 .so 列表, 按模块/CFI状态过滤</div></div></li>
+        <li class="task-item"><div class="task-icon todo">&#9711;</div><div class="task-content"><div class="task-title-text">函数级 CFI 分析页面</div><div class="task-detail">展示选定 .so 内部: .cfi 函数列表, vcall/icall 调用点, PAC 指令标注, blocklist 对比</div></div></li>
+        <li class="task-item"><div class="task-icon todo">&#9711;</div><div class="task-content"><div class="task-title-text">CFI 配置详情页面</div><div class="task-detail">展示 BUILD.gn 中的 sanitize 配置, 代码高亮</div></div></li>
+        <li class="task-item"><div class="task-icon todo">&#9711;</div><div class="task-content"><div class="task-title-text">报告导出 (CSV/JSON)</div><div class="task-detail">当前已有 JSON (query_sql) 和 Excel; CSV 导出待补</div></div></li>
+    </ul>
+    <div class="milestone">
+        <div class="milestone-icon">target</div>
+        <div class="milestone-title">里程碑：完整检测 + Web 可视化</div>
+        <div style="font-size: 0.88rem; color: var(--text-light);">核心管线已建成, 高级可视化进行中</div>
+    </div>
+    <div class="tech-stack">
+        <span class="tech-tag">Flask 3.0</span>
+        <span class="tech-tag">ECharts 5.5</span>
+        <span class="tech-tag">openpyxl</span>
+        <span class="tech-tag">sqlite3</span>
+        <span class="tech-tag">MCP</span>
+        <span class="tech-tag">cxxfilt</span>
+    </div>
+</div>
+
+<!-- Phase 4 -->
+<div class="phase p4">
+    <div class="phase-header">
+        <div>
+            <span class="phase-title">阶段四：Skill 封装与文档</span>
+            <span class="phase-status partial">Skill 已封装, 文档待补</span>
+        </div>
+        <span class="phase-date">8月26日 — 9月1日</span>
+    </div>
+    <p class="phase-desc">CFI Agent 已封装为完整 Skill (SKILL.md + 19 工具 + CLI + LLM 集成), pac_detector.py 已参数化。完整文档、端到端测试、课题总结待完成。</p>
+    <ul class="task-list">
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">检测脚本封装</div><div class="task-detail">cfi.bat 一键启动, 自动安装依赖; pac_detector.py 支持 --json/--verbose; pip install -e .</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">AI Agent Skill 定义</div><div class="task-detail">SKILL.md (cfi-detection skill); 19 工具自动注册; 自然语言描述需求即可调度</div></div></li>
+        <li class="task-item"><div class="task-icon done">&#10003;</div><div class="task-content"><div class="task-title-text">低性能 LLM 适配</div><div class="task-detail">propose_plan 先规划后执行; 工具描述精简; 默认值注入; MCP sqlite 本地查询兜底</div></div></li>
+        <li class="task-item"><div class="task-icon partial">&#9680;</div><div class="task-content"><div class="task-title-text">完整文档编写</div><div class="task-detail">使用手册、技术文档、检测原理说明、精度验证记录 — 待编写</div></div></li>
+        <li class="task-item"><div class="task-icon partial">&#9680;</div><div class="task-content"><div class="task-title-text">测试与优化</div><div class="task-detail">AArch64 检测已交叉验证; 端到端测试、性能优化、异常处理待完善</div></div></li>
+        <li class="task-item"><div class="task-icon todo">&#9711;</div><div class="task-content"><div class="task-title-text">课题总结</div><div class="task-detail">整理成果, 编写结题报告, 准备演示</div></div></li>
+    </ul>
+    <div class="milestone">
+        <div class="milestone-icon">package</div>
+        <div class="milestone-title">里程碑：课题完成</div>
+        <div style="font-size: 0.88rem; color: var(--text-light);">可复用 CFI 检测 Skill + PAC/BTI 脚本 + Web 界面 + 完整文档</div>
+    </div>
+    <div class="tech-stack">
+        <span class="tech-tag">opencode skill</span>
+        <span class="tech-tag">typer CLI</span>
+        <span class="tech-tag">rich console</span>
+        <span class="tech-tag">prompt_toolkit</span>
+        <span class="tech-tag">deepseek/qwen LLM</span>
+        <span class="tech-tag">config.yaml</span>
+    </div>
+</div>
+
+</div>
+
+<!-- Final Deliverables -->
+<h2 class="section-title">最终交付物</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 36px;">
+    <div style="background: var(--card-bg); border-radius: 14px; padding: 24px 20px; box-shadow: var(--shadow); text-align: center;">
+        <div style="font-size: 2rem; margin-bottom: 8px;">file</div>
+        <div style="font-size: 0.95rem; font-weight: 700;">CFI Agent</div>
+        <div style="font-size: 0.82rem; color: var(--text-light); margin-top: 4px;">19 工具 / 3 级检测 / AArch64 + Thumb</div>
+    </div>
+    <div style="background: var(--card-bg); border-radius: 14px; padding: 24px 20px; box-shadow: var(--shadow); text-align: center;">
+        <div style="font-size: 2rem; margin-bottom: 8px;">shield</div>
+        <div style="font-size: 0.95rem; font-weight: 700;">后向 CFI: PAC 脚本</div>
+        <div style="font-size: 0.82rem; color: var(--text-light); margin-top: 4px;">返回地址签名/认证检测 / 仅单 .so 验证</div>
+    </div>
+    <div style="background: var(--card-bg); border-radius: 14px; padding: 24px 20px; box-shadow: var(--shadow); text-align: center;">
+        <div style="font-size: 2rem; margin-bottom: 8px;">shield</div>
+        <div style="font-size: 0.95rem; font-weight: 700;">前向 CFI: BTI 脚本</div>
+        <div style="font-size: 0.82rem; color: var(--text-light); margin-top: 4px;">分支目标标识检测 / 仅单 .so 验证</div>
+    </div>
+    <div style="background: var(--card-bg); border-radius: 14px; padding: 24px 20px; box-shadow: var(--shadow); text-align: center;">
+        <div style="font-size: 2rem; margin-bottom: 8px;">globe</div>
+        <div style="font-size: 0.95rem; font-weight: 700;">Web 可视化</div>
+        <div style="font-size: 0.82rem; color: var(--text-light); margin-top: 4px;">SQLite + HTML + Excel + Flask API</div>
+    </div>
+    <div style="background: var(--card-bg); border-radius: 14px; padding: 24px 20px; box-shadow: var(--shadow); text-align: center;">
+        <div style="font-size: 2rem; margin-bottom: 8px;">robot</div>
+        <div style="font-size: 0.95rem; font-weight: 700;">AI Agent Skill</div>
+        <div style="font-size: 0.82rem; color: var(--text-light); margin-top: 4px;">SKILL.md + LLM 集成 + 自然语言</div>
+    </div>
+    <div style="background: var(--card-bg); border-radius: 14px; padding: 24px 20px; box-shadow: var(--shadow); text-align: center;">
+        <div style="font-size: 2rem; margin-bottom: 8px;">book</div>
+        <div style="font-size: 0.95rem; font-weight: 700;">技术文档</div>
+        <div style="font-size: 0.82rem; color: var(--text-light); margin-top: 4px;">使用手册 + 原理说明 + 精度验证</div>
+    </div>
+</div>
+
+</div>
+
+<div class="footer">
+    <p>OpenHarmony CFI 检测 Agent 课题计划（更新版）</p>
+    <p>2026年7月1日 — 2026年9月1日 | OpenHarmony v4.1 Release | rk3568 | 前向 CFI (LLVM CFI + BTI) + 后向 CFI (PAC)</p>
+</div>
+
+</body>
+</html>

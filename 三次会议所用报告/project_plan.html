@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenHarmony CFI 检测 Agent 课题计划</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-light: #60a5fa;
+            --primary-dark: #1e40af;
+            --secondary: #7c3aed;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --bg: #f1f5f9;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --text-light: #64748b;
+            --border: #e2e8f0;
+            --shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 60px 20px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%; left: -50%;
+            width: 200%; height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%);
+            animation: rotate 30s linear infinite;
+        }
+        @keyframes rotate { to { transform: rotate(360deg); } }
+        .hero h1 { font-size: 2.5rem; margin-bottom: 10px; position: relative; z-index: 1; }
+        .hero .subtitle { font-size: 1.2rem; opacity: 0.9; position: relative; z-index: 1; }
+        .hero .meta {
+            display: inline-flex; gap: 30px; margin-top: 25px;
+            position: relative; z-index: 1;
+            flex-wrap: wrap; justify-content: center;
+        }
+        .hero .meta-item {
+            background: rgba(255,255,255,0.15);
+            padding: 8px 20px; border-radius: 50px;
+            backdrop-filter: blur(10px);
+            font-size: 0.95rem;
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 40px 20px; }
+
+        .section-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .section-title .emoji { font-size: 1.5rem; }
+
+        .timeline {
+            position: relative;
+            padding-left: 50px;
+        }
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 20px; top: 0; bottom: 0;
+            width: 4px;
+            background: linear-gradient(to bottom, var(--primary), var(--secondary), var(--warning), var(--success));
+            border-radius: 2px;
+        }
+
+        .phase {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: var(--shadow);
+            position: relative;
+            transition: transform 0.2s;
+        }
+        .phase:hover { transform: translateX(4px); }
+        .phase::before {
+            content: '';
+            position: absolute;
+            left: -38px; top: 30px;
+            width: 20px; height: 20px;
+            border-radius: 50%;
+            background: var(--card-bg);
+            border: 4px solid var(--primary);
+            z-index: 1;
+        }
+        .phase.phase-2::before { border-color: var(--secondary); }
+        .phase.phase-3::before { border-color: var(--warning); }
+        .phase.phase-4::before { border-color: var(--success); }
+
+        .phase-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .phase-title { font-size: 1.3rem; font-weight: 700; }
+        .phase-date {
+            background: var(--primary);
+            color: white;
+            padding: 4px 16px;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            white-space: nowrap;
+        }
+        .phase.phase-2 .phase-date { background: var(--secondary); }
+        .phase.phase-3 .phase-date { background: var(--warning); }
+        .phase.phase-4 .phase-date { background: var(--success); }
+
+        .phase-status {
+            font-size: 0.8rem;
+            padding: 2px 10px;
+            border-radius: 50px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        .phase-status.done { background: #d1fae5; color: #065f46; }
+        .phase-status.active { background: #dbeafe; color: #1e40af; }
+        .phase-status.todo { background: #f1f5f9; color: #64748b; }
+
+        .phase-desc {
+            color: var(--text-light);
+            margin-bottom: 20px;
+            font-size: 0.95rem;
+        }
+
+        .task-list { list-style: none; }
+        .task-item {
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        .task-item:last-child { border-bottom: none; }
+        .task-icon {
+            width: 24px; height: 24px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: white;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .task-icon.done { background: var(--success); }
+        .task-icon.active { background: var(--primary); }
+        .task-icon.todo { background: var(--text-light); }
+        .task-content { flex: 1; }
+        .task-title-text { font-weight: 600; font-size: 0.95rem; }
+        .task-detail { font-size: 0.85rem; color: var(--text-light); margin-top: 3px; }
+
+        .deliverables {
+            margin-top: 20px;
+            padding: 16px;
+            background: #f8fafc;
+            border-radius: 10px;
+            border-left: 4px solid var(--success);
+        }
+        .deliverables-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--success);
+            margin-bottom: 8px;
+        }
+        .deliverables ul { padding-left: 20px; }
+        .deliverables li { font-size: 0.85rem; color: var(--text-light); margin: 4px 0; }
+
+        .tech-stack {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 15px;
+        }
+        .tech-tag {
+            background: #f1f5f9;
+            border: 1px solid var(--border);
+            padding: 4px 12px;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            color: var(--text-light);
+        }
+
+        .milestone {
+            background: linear-gradient(135deg, #f0f4ff 0%, #faf5ff 100%);
+            border: 2px solid var(--primary-light);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .milestone-icon { font-size: 2rem; }
+        .milestone-title { font-weight: 700; margin: 8px 0; }
+
+        .progress-section {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 40px;
+            box-shadow: var(--shadow);
+        }
+        .progress-bar-container {
+            height: 12px;
+            background: #e2e8f0;
+            border-radius: 6px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            border-radius: 6px;
+            transition: width 1s ease;
+        }
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: var(--text-light);
+        }
+
+        .footer {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+<div class="hero">
+    <h1>OpenHarmony CFI 检测 Agent</h1>
+    <p class="subtitle">基于 AI 的 OpenHarmony 控制流完整性自动化检测与可视化系统</p>
+    <div class="meta">
+        <span class="meta-item">2026.07.01 — 2026.09.01</span>
+        <span class="meta-item">目标平台: rk3568</span>
+        <span class="meta-item">OpenHarmony v4.1 Release</span>
+    </div>
+</div>
+
+<div class="container">
+
+<div class="progress-section">
+    <h2 style="margin-bottom: 10px;">📈 整体进度</h2>
+    <p style="color: var(--text-light); font-size: 0.9rem; margin-bottom: 10px;">阶段一已完成，当前处于阶段二（CFI 配置分析与前向/后向检测方法研究）</p>
+    <div class="progress-bar-container">
+        <div class="progress-bar" style="width: 23%;"></div>
+    </div>
+    <div class="progress-label">
+        <span>7月1日 开始</span>
+        <span style="color: var(--primary); font-weight: 600;">▲ 当前: 7月15日 (23%)</span>
+        <span>9月1日 截止</span>
+    </div>
+</div>
+
+<h2 class="section-title"><span class="emoji">📅</span> 项目时间线</h2>
+<div class="timeline">
+
+<div class="phase">
+    <div class="phase-header">
+        <div>
+            <span class="phase-title">阶段一：OpenHarmony 环境搭建与 CFI 基础</span>
+            <span class="phase-status done">✅ 已完成</span>
+        </div>
+        <span class="phase-date">7月1日 — 7月14日</span>
+    </div>
+    <p class="phase-desc">完成 OpenHarmony 源码获取、编译环境搭建、rk3568 编译烧录，以及 CFI 基础知识学习和反汇编分析。</p>
+    <ul class="task-list">
+        <li class="task-item">
+            <div class="task-icon done">✓</div>
+            <div class="task-content">
+                <div class="task-title-text">源码获取</div>
+                <div class="task-detail">从镜像站点下载 OpenHarmony v4.1 Release 全量源码，通过 FileZilla 传输至 Ubuntu 虚拟机</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon done">✓</div>
+            <div class="task-content">
+                <div class="task-title-text">虚拟机与开发环境搭建</div>
+                <div class="task-detail">VMware + Ubuntu 20.04 配置，安装 FTP 服务和 Samba 服务用于文件传输和远程开发</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon done">✓</div>
+            <div class="task-content">
+                <div class="task-title-text">编译环境配置</div>
+                <div class="task-detail">Shell 环境配置、软件源替换、编译依赖安装、Python 环境配置、编译工具链安装</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon done">✓</div>
+            <div class="task-content">
+                <div class="task-title-text">源码编译</div>
+                <div class="task-detail">使用 hb 或 build.sh 进行 rk3568 产品编译，生成完整编译产物</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon done">✓</div>
+            <div class="task-content">
+                <div class="task-title-text">烧录到 rk3568 开发板</div>
+                <div class="task-detail">使用 Rockchip 烧录工具将系统镜像烧录到 rk3568 开发板</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon done">✓</div>
+            <div class="task-content">
+                <div class="task-title-text">CFI 基础知识学习</div>
+                <div class="task-detail">学习控制流完整性原理：类型哈希、跳转表、间接调用检查、跨 DSO 校验机制、strip 对 CFI 的影响</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon done">✓</div>
+            <div class="task-content">
+                <div class="task-title-text">CFI 反汇编分析</div>
+                <div class="task-detail">对已开启 CFI 的 .so 文件反汇编，分析 __cfi_check 入口、__cfi_check_fail 失败处理、.cfi 后缀插桩函数、CFI 影子区 (trap 填充)、blocklist 对比</div>
+            </div>
+        </li>
+    </ul>
+    <div class="deliverables">
+        <div class="deliverables-title">✅ 阶段交付物</div>
+        <ul>
+            <li>可运行的 rk3568 OpenHarmony 设备</li>
+            <li>完整的编译产物 (out/rk3568/)</li>
+            <li>CFI 反汇编分析文档</li>
+        </ul>
+    </div>
+    <div class="tech-stack">
+        <span class="tech-tag">VMware</span>
+        <span class="tech-tag">Ubuntu 20.04</span>
+        <span class="tech-tag">FileZilla</span>
+        <span class="tech-tag">Samba</span>
+        <span class="tech-tag">hb / build.sh</span>
+        <span class="tech-tag">llvm-objdump</span>
+    </div>
+</div>
+
+<div class="phase phase-2">
+    <div class="phase-header">
+        <div>
+            <span class="phase-title">阶段二：CFI 配置分析与检测方法研究</span>
+            <span class="phase-status active">🔄 进行中</span>
+        </div>
+        <span class="phase-date">7月15日 — 7月28日</span>
+    </div>
+    <p class="phase-desc">深入分析 CFI 技术体系与 OpenHarmony 源码中的配置机制，研究前向 CFI 与后向 CFI 的检测方法，建立从 .so 文件级到函数级的完整检测框架。</p>
+    <ul class="task-list">
+        <li class="task-item">
+            <div class="task-icon active">1</div>
+            <div class="task-content">
+                <div class="task-title-text">CFI 技术体系全面研究</div>
+                <div class="task-detail">研究前向 CFI (Forward-edge CFI，保护间接调用/函数指针) 与后向 CFI (Backward-edge CFI，保护返回地址) 的区别；分析软件实现的 CFI (如 LLVM Clang 的 -fsanitize=cfi) 与硬件辅助 CFI (如 ARM 的 BTI 分支目标标识、PAC 指针认证) 的原理与协同关系</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon active">2</div>
+            <div class="task-content">
+                <div class="task-title-text">用户态 CFI 配置分析</div>
+                <div class="task-detail">分析全局开关和逐组件 opt-in 机制、CFI 编译 flag、跨 DSO 校验机制、黑名单机制、调试模式配置</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon active">3</div>
+            <div class="task-content">
+                <div class="task-title-text">目标架构分析</div>
+                <div class="task-detail">确认 32 位用户态 + 64 位内核的混合架构配置，分析产品配置文件对编译目标的影响</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">4</div>
+            <div class="task-content">
+                <div class="task-title-text">前向 CFI 检测方法研究</div>
+                <div class="task-detail">前向 CFI 保护间接调用 (函数指针、虚函数调用)；研究通过反汇编识别前向 CFI 插桩特征：.cfi 后缀函数 (插桩跳板)、__cfi_check 入口函数中的类型哈希比较指令 (movz/movk 加载哈希 + cmp 比较 + b.eq 分支)、CFI 影子区 trap 填充区 (0xd4d4d4d4)；开发针对前向 CFI 的函数级检测方法</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">5</div>
+            <div class="task-content">
+                <div class="task-title-text">后向 CFI 检测方法研究</div>
+                <div class="task-detail">后向 CFI 保护返回地址，防止返回地址被篡改 (ROP 攻击)；研究 OpenHarmony 中的后向 CFI 实现：ARM PAC 指针认证 (PACIASP/PACISP 指令对返回地址签名)、Shadow Call Stack (影子栈) 机制；研究通过反汇编识别 PAC 指令和影子栈相关符号，开发后向 CFI 检测方法</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">6</div>
+            <div class="task-content">
+                <div class="task-title-text">.so 文件级 CFI 检测方法开发</div>
+                <div class="task-detail">开发基于符号表的精确检测方法，检测 __cfi_check 是否为已定义符号；对未 strip 的 .so 文件逐个扫描，判断该 .so 是否整体开启了 CFI</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">7</div>
+            <div class="task-content">
+                <div class="task-title-text">函数级 CFI 检测方法研究</div>
+                <div class="task-detail">在一个 .so 内部，并非所有函数都受 CFI 保护；研究如何通过反汇编识别 .cfi 后缀函数 (CFI 插桩版本)、__cfi_check 入口、CFI 影子区 trap 填充区，定位哪些函数开启了前向 CFI、哪些通过 blocklist 豁免、哪些函数有后向 CFI 保护 (PAC 指令)</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">8</div>
+            <div class="task-content">
+                <div class="task-title-text">CFI 运行时分析、覆盖率验证与检测精度保障</div>
+                <div class="task-detail">分析 CFI 慢路径函数来源，确认运行时由 musl libc 提供；生成完整 .so 清单，验证未 strip 目录与部署目录的双向覆盖率；确认 __cfi_check 为局部符号，strip 后被删除，必须使用未 strip 版本进行检测；分析 CFI 运行时函数与 CFI 检查函数的区别，确保检测精度</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">9</div>
+            <div class="task-content">
+                <div class="task-title-text">blocklist 豁免函数分析</div>
+                <div class="task-detail">分析 cfi_blocklist.txt 的内容和作用，研究如何通过对比有无 blocklist 的反汇编结果，识别哪些函数被豁免了 CFI 检查</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">10</div>
+            <div class="task-content">
+                <div class="task-title-text">CFI 与其他安全机制协同分析</div>
+                <div class="task-detail">分析前向 CFI (-fsanitize=cfi) 与后向 CFI (PAC/Shadow Call Stack) 的协同工作关系，以及与 BTI 分支目标标识的配合，理解 OpenHarmony 多层安全防护体系</div>
+            </div>
+        </li>
+    </ul>
+    <div class="deliverables">
+        <div class="deliverables-title">✅ 阶段交付物</div>
+        <ul>
+            <li>CFI 技术体系研究报告 (前向/后向、软件/硬件实现)</li>
+            <li>用户态 CFI 配置分析文档</li>
+            <li>前向 CFI 检测方法 (.cfi 函数识别、类型哈希比较指令检测)</li>
+            <li>后向 CFI 检测方法 (PAC 指令识别、影子栈检测)</li>
+            <li>.so 文件级 + 函数级检测方法</li>
+            <li>覆盖率验证报告</li>
+            <li>blocklist 豁免函数分析</li>
+        </ul>
+    </div>
+    <div class="tech-stack">
+        <span class="tech-tag">GN/Ninja</span>
+        <span class="tech-tag">nm -D</span>
+        <span class="tech-tag">readelf</span>
+        <span class="tech-tag">llvm-objdump</span>
+        <span class="tech-tag">PowerShell</span>
+        <span class="tech-tag">ARM BTI</span>
+        <span class="tech-tag">ARM PAC</span>
+        <span class="tech-tag">Shadow Call Stack</span>
+    </div>
+</div>
+
+<div class="phase phase-3">
+    <div class="phase-header">
+        <div>
+            <span class="phase-title">阶段三：检测脚本开发、全面扫描与 Web 可视化</span>
+            <span class="phase-status todo">⏳ 待开始</span>
+        </div>
+        <span class="phase-date">7月29日 — 8月25日</span>
+    </div>
+    <p class="phase-desc">开发自动化检测脚本，对用户态 .so 和预编译厂商库进行文件级和函数级 CFI 扫描（前向 + 后向），并将检测结果通过美观的 Web 界面进行可视化展示。</p>
+    <ul class="task-list">
+        <li class="task-item">
+            <div class="task-icon todo">1</div>
+            <div class="task-content">
+                <div class="task-title-text">用户态 .so 文件级 CFI 扫描脚本</div>
+                <div class="task-detail">开发自动化脚本，逐个检测未 strip 的 .so 文件中 __cfi_check 是否为已定义符号，按模块分组统计，输出 CFI 开启/未开启文件列表</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">2</div>
+            <div class="task-content">
+                <div class="task-title-text">函数级前向 CFI 检测脚本</div>
+                <div class="task-detail">对已开启 CFI 的 .so 反汇编，识别 .cfi 后缀函数 (前向 CFI 插桩跳板)、__cfi_check 入口函数中的类型哈希比较指令、CFI 影子区 trap 填充区，定位哪些函数受前向 CFI 保护、哪些被 blocklist 豁免</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">3</div>
+            <div class="task-content">
+                <div class="task-title-text">函数级后向 CFI 检测脚本</div>
+                <div class="task-detail">对 .so 反汇编，识别 PAC 指令 (PACIASP/PACISP 签名、AUTIASP/AUTISP 验证)，统计受后向 CFI 保护的函数比例；识别 Shadow Call Stack 相关符号和配置</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">4</div>
+            <div class="task-content">
+                <div class="task-title-text">blocklist 豁免函数对比检测</div>
+                <div class="task-detail">对比有 blocklist 和无 blocklist 编译的 .so 反汇编结果，识别被豁免 CFI 检查的具体函数，分析豁免前后的指令差异 (内联 CFI 位图检查的增减)</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">5</div>
+            <div class="task-content">
+                <div class="task-title-text">预编译厂商库检测</div>
+                <div class="task-detail">检测 Rockchip 闭源预编译库的 CFI 状态 (前向 + 后向)，确认不受 OpenHarmony 构建系统控制的库</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">6</div>
+            <div class="task-content">
+                <div class="task-title-text">LLVM IR 分析</div>
+                <div class="task-detail">将 bitcode 转为 LLVM IR，展示编译器插入的 CFI 检查代码 (type.test + 慢路径调用)，分析函数级 CFI 插桩的具体模式</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">7</div>
+            <div class="task-content">
+                <div class="task-title-text">检测精度验证</div>
+                <div class="task-detail">通过抽样对比反汇编结果，验证检测方法对 __cfi_check 符号和 PAC 指令的识别准确性，确保检测结果与实际 CFI 状态一致</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">8</div>
+            <div class="task-content">
+                <div class="task-title-text">数据层设计与 JSON 格式定义</div>
+                <div class="task-detail">设计 JSON 数据结构，包含：summary 对象 (总文件数、CFI 开启数、覆盖率)、modules 数组 (模块名、开启数、未开启数、开启率)、files 数组 (文件路径、模块归属、前向 CFI 状态、后向 CFI 状态)、functions 数组 (函数名、.cfi 插桩版本、PAC 指令、是否 blocklist 豁免)；编写脚本将检测结果自动转为该 JSON 格式</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">9</div>
+            <div class="task-content">
+                <div class="task-title-text">首页仪表盘</div>
+                <div class="task-detail">总览卡片 (总 .so 数、前向 CFI 开启数、后向 CFI 开启数、覆盖率百分比)、用户态/厂商库分类统计面板、覆盖率环形进度条可视化、CFI 开启率趋势条形图</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">10</div>
+            <div class="task-content">
+                <div class="task-title-text">模块统计图表</div>
+                <div class="task-detail">使用 Chart.js 绘制水平柱状图展示各模块的 CFI 开启率，按开启率从高到低排序，100% 模块标绿色、0% 模块标红色、中间渐变色；支持鼠标悬停显示具体数值</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">11</div>
+            <div class="task-content">
+                <div class="task-title-text">交互式文件列表 (DataTable)</div>
+                <div class="task-detail">使用 DataTables.js 实现可分页、可搜索、可排序的 .so 文件列表表格，列包括：文件路径、模块名、前向 CFI 状态、后向 CFI 状态、文件大小；支持按模块名筛选、按 CFI 状态过滤</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">12</div>
+            <div class="task-content">
+                <div class="task-title-text">函数级 CFI 分析页面</div>
+                <div class="task-detail">展示选定 .so 内部的函数级 CFI 状态：前向 CFI (.cfi 后缀函数列表、类型哈希比较指令)、后向 CFI (PAC 指令标注、影子栈符号)、blocklist 豁免函数对比表、CFI 影子区地址范围、__cfi_check 入口函数指令</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">13</div>
+            <div class="task-content">
+                <div class="task-title-text">CFI 配置详情页面</div>
+                <div class="task-detail">展示各模块 BUILD.gn 中的 sanitize 配置 (cfi/cfi_cross_dso/blocklist/debug)，以代码高亮形式显示配置内容，标注哪些配置项对应 CFI 开启</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">14</div>
+            <div class="task-content">
+                <div class="task-title-text">报告导出功能</div>
+                <div class="task-detail">一键导出 HTML 格式 (带样式的完整报告)、CSV 格式 (文件级 CFI 状态列表，可用 Excel 打开)、JSON 格式 (结构化数据，供其他工具调用)</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">15</div>
+            <div class="task-content">
+                <div class="task-title-text">响应式布局与整体美化</div>
+                <div class="task-detail">使用 CSS Flexbox/Grid 实现响应式布局，适配桌面和平板；统一配色方案 (前向 CFI=绿色系、后向 CFI=蓝色系、未开启=红色系)、卡片阴影、圆角、悬停动画等视觉细节</div>
+            </div>
+        </li>
+    </ul>
+    <div class="milestone">
+        <div class="milestone-icon">🎯</div>
+        <div class="milestone-title">里程碑：完成检测与可视化</div>
+        <div style="font-size: 0.9rem; color: var(--text-light);">文件级 + 函数级 (前向+后向) CFI 扫描 + Web 界面上线</div>
+    </div>
+    <div class="tech-stack">
+        <span class="tech-tag">PowerShell</span>
+        <span class="tech-tag">nm -D</span>
+        <span class="tech-tag">readelf</span>
+        <span class="tech-tag">llvm-objdump</span>
+        <span class="tech-tag">llvm-dis</span>
+        <span class="tech-tag">HTML5</span>
+        <span class="tech-tag">CSS3 (Flexbox/Grid)</span>
+        <span class="tech-tag">Chart.js</span>
+        <span class="tech-tag">DataTables.js</span>
+        <span class="tech-tag">JSON</span>
+        <span class="tech-tag">CSV 导出</span>
+    </div>
+</div>
+
+<div class="phase phase-4">
+    <div class="phase-header">
+        <div>
+            <span class="phase-title">阶段四：Skill/脚本封装与文档</span>
+            <span class="phase-status todo">⏳ 待开始</span>
+        </div>
+        <span class="phase-date">8月26日 — 9月1日</span>
+    </div>
+    <p class="phase-desc">将检测过程封装为可复用的 Skill/脚本，使低性能大模型也能调用完成 CFI 检测任务，编写完整文档。</p>
+    <ul class="task-list">
+        <li class="task-item">
+            <div class="task-icon todo">1</div>
+            <div class="task-content">
+                <div class="task-title-text">检测脚本封装</div>
+                <div class="task-detail">将完整检测流程封装为单一脚本，支持参数化 (目标目录、输出格式等)</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">2</div>
+            <div class="task-content">
+                <div class="task-title-text">AI Agent Skill 开发</div>
+                <div class="task-detail">编写 skill 定义文件，描述 CFI 检测能力、参数和输出格式，供其他 AI Agent 调用</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">3</div>
+            <div class="task-content">
+                <div class="task-title-text">低性能 LLM 适配</div>
+                <div class="task-detail">简化调用流程，使低性能大模型只需简单指令即可完成完整 CFI 检测</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">4</div>
+            <div class="task-content">
+                <div class="task-title-text">完整文档编写</div>
+                <div class="task-detail">编写使用手册、技术文档、检测原理说明、精度验证记录</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">5</div>
+            <div class="task-content">
+                <div class="task-title-text">测试与优化</div>
+                <div class="task-detail">端到端测试，性能优化，异常处理完善</div>
+            </div>
+        </li>
+        <li class="task-item">
+            <div class="task-icon todo">6</div>
+            <div class="task-content">
+                <div class="task-title-text">课题总结</div>
+                <div class="task-detail">整理成果，编写结题报告，准备演示</div>
+            </div>
+        </li>
+    </ul>
+    <div class="milestone">
+        <div class="milestone-icon">📦</div>
+        <div class="milestone-title">里程碑：课题完成</div>
+        <div style="font-size: 0.9rem; color: var(--text-light);">可复用的 CFI 检测 Skill + Web 界面 + 完整文档</div>
+    </div>
+    <div class="tech-stack">
+        <span class="tech-tag">opencode skill</span>
+        <span class="tech-tag">PowerShell</span>
+        <span class="tech-tag">Bash</span>
+        <span class="tech-tag">JSON API</span>
+        <span class="tech-tag">Markdown</span>
+    </div>
+</div>
+
+</div>
+
+<h2 class="section-title"><span class="emoji">📋</span> 最终交付物</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 40px;">
+    <div style="background: var(--card-bg); border-radius: 16px; padding: 28px 24px; box-shadow: var(--shadow); text-align: center; transition: transform 0.3s;">
+        <div style="font-size: 2.5rem; margin-bottom: 10px;">📄</div>
+        <div style="font-size: 1rem; font-weight: 700;">CFI 检测报告</div>
+        <div style="font-size: 0.85rem; color: var(--text-light); margin-top: 5px;">用户态文件级 + 函数级 + 厂商库全面扫描结果</div>
+    </div>
+    <div style="background: var(--card-bg); border-radius: 16px; padding: 28px 24px; box-shadow: var(--shadow); text-align: center; transition: transform 0.3s;">
+        <div style="font-size: 2.5rem; margin-bottom: 10px;">🌐</div>
+        <div style="font-size: 1rem; font-weight: 700;">Web 可视化界面</div>
+        <div style="font-size: 0.85rem; color: var(--text-light); margin-top: 5px;">仪表盘 + 图表 + 交互式列表 + 报告导出</div>
+    </div>
+    <div style="background: var(--card-bg); border-radius: 16px; padding: 28px 24px; box-shadow: var(--shadow); text-align: center; transition: transform 0.3s;">
+        <div style="font-size: 2.5rem; margin-bottom: 10px;">🤖</div>
+        <div style="font-size: 1rem; font-weight: 700;">AI Agent Skill</div>
+        <div style="font-size: 0.85rem; color: var(--text-light); margin-top: 5px;">可复用检测脚本 + skill 定义 + 低性能 LLM 适配</div>
+    </div>
+    <div style="background: var(--card-bg); border-radius: 16px; padding: 28px 24px; box-shadow: var(--shadow); text-align: center; transition: transform 0.3s;">
+        <div style="font-size: 2.5rem; margin-bottom: 10px;">📚</div>
+        <div style="font-size: 1rem; font-weight: 700;">完整技术文档</div>
+        <div style="font-size: 0.85rem; color: var(--text-light); margin-top: 5px;">使用手册 + 原理说明 + 精度验证</div>
+    </div>
+</div>
+
+</div>
+
+<div class="footer">
+    <p>OpenHarmony CFI 检测 Agent 课题计划</p>
+    <p>2026年7月1日 — 2026年9月1日 | OpenHarmony v4.1 Release | rk3568</p>
+</div>
+
+</body>
+</html>
