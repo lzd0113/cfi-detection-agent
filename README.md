@@ -158,6 +158,21 @@ OpenAI 兼容接口（`/v1/chat/completions`），支持流式输出和工具调
 | PAC | ROP（返回地址篡改） | HINT 指令扫描 + 函数级 sign/auth 分类 | 仅 AArch64 |
 | BTI | JOP（跳转劫持） | 函数入口 BTI 指令检查 | 仅 AArch64 |
 
+## 演示与样例
+
+Agent 完整检测过程演示及检测生成的 Excel、HTML 看板样例可参考 `答辩材料/` 目录：
+
+| 文件 | 说明 |
+|------|------|
+| `detection_demo.mp4` | 完整检测过程演示视频 |
+| `html_report_demo.mp4` | HTML 看板操作演示（统计、模块、函数搜索） |
+| `cfi_report.html` | 检测结果 HTML 报告样例（单文件，双击打开） |
+| `cfi_detection_report.xlsx` | 检测结果 Excel 报告样例（4 Sheet） |
+
+## 技术文档
+
+整个检测流程中的一些细节性问题（如函数总数统计逻辑、BTI 检测为什么只有 4 个、32 位为什么没有后向 CFI 等）可参考 `docs/` 目录下的相关说明文档。
+
 ## Agent 架构
 
 ```
