@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-python -c "import httpx,typer,rich,elftools,openpyxl,flask,cxxfilt,yaml,dotenv,prompt_toolkit" 2>nul
+python -c "import cfi_agent; import httpx,typer,rich,elftools,openpyxl,flask,cxxfilt,yaml,dotenv,prompt_toolkit" 2>nul
 if not errorlevel 1 goto run
 echo.
 echo ================================================
