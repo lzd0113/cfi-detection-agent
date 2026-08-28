@@ -10,7 +10,6 @@ output/
 *.xlsx
 
 # === 大体积依赖（用户自行下载）===
-echarts.min.js
 
 # === Python 缓存 ===
 __pycache__/
