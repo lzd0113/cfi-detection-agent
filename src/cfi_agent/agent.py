@@ -56,7 +56,7 @@ class Agent:
             "",
             "=== 安全知识库 ===",
         ]
-        knowledge_dir = Path(__file__).parent.parent / 'knowledge'
+        knowledge_dir = Path(__file__).parent.parent.parent / 'knowledge'
         if knowledge_dir.is_dir():
             for f in sorted(knowledge_dir.glob('*.md')):
                 try:
